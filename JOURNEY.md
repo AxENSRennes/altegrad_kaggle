@@ -32,3 +32,11 @@
 *   **Training**: Batch size 32, Learning Rate 0.001.
 
 **Conclusion**: By fixing the feature encoding, we transformed the problem from "guessing shapes" to "learning chemistry", enabling the model to actually align molecular structures with textual descriptions.
+
+## 5. First Submission & Results
+*   **Model**: Triplet Loss (m=0.2), LR=0.001, 100 Epochs.
+*   **Public Score**: **0.50723**
+*   **Leaderboard Context**:
+    *   Best Score: 0.66357
+    *   Lowest Score: 0.47967
+    *   *Our baseline is performing decently above the bottom, showing the AtomEncoder effectiveness, but significant room for improvement remains.*
