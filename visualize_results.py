@@ -128,11 +128,17 @@ def evaluate_and_plot(model, val_loader, device, output_dir="figures", output_pr
 
 
 def main():
-    if not os.path.exists("model_checkpoint.pt"):
-        print("Model checkpoint not found. Please train first.")
+    parser = argparse.ArgumentParser(description="Visualize Retrieval Results")
+    parser.add_argument("--model_path", type=str, default="model_checkpoint.pt", help="Path to the trained model checkpoint")
+    args = parser.parse_args()
+
+    if not os.path.exists(args.model_path):
+        print(f"Error: Model checkpoint '{args.model_path}' not found.")
+        print("Please train first or specify correct path with --model_path")
         return
 
     print(f"Device: {DEVICE}")
+    print(f"Evaluating model: {args.model_path}")
     
     # Load Embeddings
     print(f"Loading embeddings from {VAL_EMB_CSV}...")
@@ -142,7 +148,7 @@ def main():
     # Load Model
     print("Loading model...")
     model = MolGNN(out_dim=emb_dim).to(DEVICE)
-    model.load_state_dict(torch.load("model_checkpoint.pt", map_location=DEVICE))
+    model.load_state_dict(torch.load(args.model_path, map_location=DEVICE))
     
     # Load Data
     print(f"Loading graphs from {VAL_GRAPHS}...")
