@@ -11,7 +11,8 @@ from torch_geometric.nn import GCNConv, global_add_pool
 
 from data_utils import (
     load_id2emb,
-    PreprocessedGraphDataset, collate_fn
+    PreprocessedGraphDataset, collate_fn,
+    x_map
 )
 
 # =========================================================
@@ -31,12 +32,39 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # =========================================================
 # MODEL: GNN
 # =========================================================
+class AtomEncoder(torch.nn.Module):
+    def __init__(self, emb_dim):
+        super(AtomEncoder, self).__init__()
+        
+        self.atom_embedding_list = torch.nn.ModuleList()
+        # Order of features must match how data was processed.
+        # Based on data_utils.x_map keys order (which is usually reliable in Py3.7+)
+        # But safest is to iterate over the known keys list or depend on data_utils
+        # We'll rely on the keys in x_map from data_utils
+        
+        for i, key in enumerate(x_map.keys()):
+            num_possible_values = len(x_map[key])
+            # Add 1 for potential OOV or padding if needed, but usually 
+            # the pre-processing handles mapping to available indices.
+            # safe side: use len(x_map[key])
+            emb = torch.nn.Embedding(num_possible_values, emb_dim)
+            torch.nn.init.xavier_uniform_(emb.weight.data)
+            self.atom_embedding_list.append(emb)
+
+    def forward(self, x):
+        # x: [num_nodes, num_features]
+        x_embedding = 0
+        for i in range(x.shape[1]):
+            x_embedding += self.atom_embedding_list[i](x[:, i])
+        return x_embedding
+
+
 class MolGNN(nn.Module):
     def __init__(self, hidden=128, out_dim=256, layers=3):
         super().__init__()
 
-        # Use a single learnable embedding for all nodes (no node features)
-        self.node_init = nn.Parameter(torch.randn(hidden))
+        # Replace single parameter with proper encoder
+        self.atom_encoder = AtomEncoder(hidden)
 
         self.convs = nn.ModuleList()
         for _ in range(layers):
@@ -45,8 +73,8 @@ class MolGNN(nn.Module):
         self.proj = nn.Linear(hidden, out_dim)
 
     def forward(self, batch: Batch):
-        num_nodes = batch.x.size(0)
-        h = self.node_init.unsqueeze(0).expand(num_nodes, -1)
+        # Use atom features from batch.x
+        h = self.atom_encoder(batch.x)
         
         for conv in self.convs:
             h = conv(h, batch.edge_index)
