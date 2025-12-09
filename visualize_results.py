@@ -130,7 +130,7 @@ def evaluate_and_plot(model, val_loader, device, output_dir="figures", output_pr
 
 def main():
     parser = argparse.ArgumentParser(description="Visualize Retrieval Results")
-    parser.add_argument("--model_path", type=str, default="model_checkpoint.pt", help="Path to the trained model checkpoint")
+    parser.add_argument("--model_path", type=str, default="checkpoints/model_checkpoint.pt", help="Path to the trained model checkpoint")
     args = parser.parse_args()
 
     if not os.path.exists(args.model_path):

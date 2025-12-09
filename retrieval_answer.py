@@ -83,7 +83,7 @@ def main():
     print(f"Device: {DEVICE}")
     
     parser = argparse.ArgumentParser(description="Generate Kaggle Submission from Trained Model")
-    parser.add_argument("--model_path", type=str, default="model_checkpoint.pt", help="Path to the trained model checkpoint")
+    parser.add_argument("--model_path", type=str, default="checkpoints/model_checkpoint.pt", help="Path to the trained model checkpoint")
     parser.add_argument("--output_csv", type=str, default="test_retrieved_descriptions.csv", help="Path to save the output CSV")
     args = parser.parse_args()
 

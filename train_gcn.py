@@ -247,9 +247,9 @@ def main():
     
     # Save Model
     if args.loss == 'triplet':
-        model_name = f"model_triplet_m{args.margin}_lr{args.lr}_ep{args.epochs}.pt"
+        model_name = f"checkpoints/model_triplet_m{args.margin}_lr{args.lr}_ep{args.epochs}.pt"
     else:
-        model_name = f"model_mse_lr{args.lr}_ep{args.epochs}.pt"
+        model_name = f"checkpoints/model_mse_lr{args.lr}_ep{args.epochs}.pt"
         
     torch.save(mol_enc.state_dict(), model_name)
     print(f"\nModel saved to {model_name}")
