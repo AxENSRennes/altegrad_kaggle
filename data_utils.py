@@ -127,6 +127,36 @@ class PreprocessedGraphDataset(Dataset):
             return graph
 
 
+def batch_graphs_with_cache(graphs):
+    """
+    Build a PyG Batch while carrying cached [n,n] tensors as Python lists to avoid concatenation.
+    Supports cached attributes stored as `spatial_pos` / `edge_type_mat` on each graph.
+    """
+    sp_list = []
+    et_list = []
+    clean = []
+
+    for g in graphs:
+        sp_list.append(getattr(g, "spatial_pos", None))
+        et_list.append(getattr(g, "edge_type_mat", None))
+
+        gg = g.clone()
+        # Drop cache fields so PyG won't try to concatenate them.
+        for attr in ("spatial_pos", "edge_type_mat", "_spatial_pos", "_edge_type_mat"):
+            if hasattr(gg, attr):
+                delattr(gg, attr)
+        clean.append(gg)
+
+    batch_graph = Batch.from_data_list(clean)
+    # Store caches as Python lists on the Batch (PyG won't touch these).
+    batch_graph._spatial_pos = sp_list
+    batch_graph._edge_type_mat = et_list
+    # Backwards-compatible aliases
+    batch_graph._spatial_pos_list = sp_list
+    batch_graph._edge_type_mat_list = et_list
+    return batch_graph
+
+
 def collate_fn(batch):
     """
     Collate function for DataLoader to batch graphs with optional text embeddings.
@@ -139,9 +169,8 @@ def collate_fn(batch):
     """
     if isinstance(batch[0], tuple):
         graphs, text_embs = zip(*batch)
-        batch_graph = Batch.from_data_list(list(graphs))
+        batch_graph = batch_graphs_with_cache(list(graphs))
         text_embs = torch.stack(text_embs, dim=0)
         return batch_graph, text_embs
     else:
-        return Batch.from_data_list(batch)
-
+        return batch_graphs_with_cache(batch)

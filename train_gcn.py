@@ -1,19 +1,18 @@
 import os
-import argparse
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 
 from torch_geometric.data import Batch
 from torch_geometric.nn import GCNConv, global_add_pool
 
 from data_utils import (
     load_id2emb,
-    PreprocessedGraphDataset, collate_fn,
-    x_map
+    PreprocessedGraphDataset, collate_fn
 )
+
 
 # =========================================================
 # CONFIG
@@ -26,45 +25,22 @@ TEST_GRAPHS  = "data/test_graphs.pkl"
 TRAIN_EMB_CSV = "data/train_embeddings.csv"
 VAL_EMB_CSV   = "data/validation_embeddings.csv"
 
+# Training parameters
+BATCH_SIZE = 32
+EPOCHS = 5
+LR = 1e-3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 # =========================================================
-# MODEL: GNN
+# MODEL: GNN to encode graphs (simple GCN, no edge features)
 # =========================================================
-class AtomEncoder(torch.nn.Module):
-    def __init__(self, emb_dim):
-        super(AtomEncoder, self).__init__()
-        
-        self.atom_embedding_list = torch.nn.ModuleList()
-        # Order of features must match how data was processed.
-        # Based on data_utils.x_map keys order (which is usually reliable in Py3.7+)
-        # But safest is to iterate over the known keys list or depend on data_utils
-        # We'll rely on the keys in x_map from data_utils
-        
-        for i, key in enumerate(x_map.keys()):
-            num_possible_values = len(x_map[key])
-            # Add 1 for potential OOV or padding if needed, but usually 
-            # the pre-processing handles mapping to available indices.
-            # safe side: use len(x_map[key])
-            emb = torch.nn.Embedding(num_possible_values, emb_dim)
-            torch.nn.init.xavier_uniform_(emb.weight.data)
-            self.atom_embedding_list.append(emb)
-
-    def forward(self, x):
-        # x: [num_nodes, num_features]
-        x_embedding = 0
-        for i in range(x.shape[1]):
-            x_embedding += self.atom_embedding_list[i](x[:, i])
-        return x_embedding
-
-
 class MolGNN(nn.Module):
     def __init__(self, hidden=128, out_dim=256, layers=3):
         super().__init__()
 
-        # Replace single parameter with proper encoder
-        self.atom_encoder = AtomEncoder(hidden)
+        # Use a single learnable embedding for all nodes (no node features)
+        self.node_init = nn.Parameter(torch.randn(hidden))
 
         self.convs = nn.ModuleList()
         for _ in range(layers):
@@ -73,8 +49,9 @@ class MolGNN(nn.Module):
         self.proj = nn.Linear(hidden, out_dim)
 
     def forward(self, batch: Batch):
-        # Use atom features from batch.x
-        h = self.atom_encoder(batch.x)
+        # Initialize all nodes with the same learnable embedding
+        num_nodes = batch.x.size(0)
+        h = self.node_init.unsqueeze(0).expand(num_nodes, -1)
         
         for conv in self.convs:
             h = conv(h, batch.edge_index)
@@ -86,60 +63,12 @@ class MolGNN(nn.Module):
 
 
 # =========================================================
-# LOSS FUNCTIONS
+# Training and Evaluation
 # =========================================================
-class TripletLoss(nn.Module):
-    def __init__(self, margin=0.2):
-        super().__init__()
-        self.margin = margin
-
-    def forward(self, mol_emb, text_emb):
-        """
-        mol_emb: [batch_size, dim]
-        text_emb: [batch_size, dim] - corresponding correct descriptions
-        
-        We use in-batch negatives.
-        For each molecule i:
-          - Anchor: mol_emb[i]
-          - Positive: text_emb[i]
-          - Negatives: any text_emb[j] where j != i
-        """
-        scores = mol_emb @ text_emb.t()  # [B, B] cosine similarity (already normalized)
-        diag = scores.diag()             # [B] - positive scores (Sim(A, P))
-
-        # For each row i, we want Sim(A, P) > Sim(A, N) + margin
-        # => Sim(A, N) - Sim(A, P) + margin < 0
-        # We compute Loss = max(0, Sim(A, N) - Sim(A, P) + margin)
-        
-        # We can implement "hardest negative" or "mean negative". 
-        # Standard approach: Sum over all negatives in the batch
-        
-        # Mask out the diagonal (positives)
-        mask = torch.eye(scores.size(0), device=scores.device).bool()
-        
-        # scores without diagonal are tricky to reshape, so we can do:
-        # Loss matrix: (Sim(A, N) - Sim(A, P) + margin)
-        # We subtract col vector diag from matrix scores
-        cost = scores - diag.view(-1, 1) + self.margin
-        
-        # Set diagonal to 0 (we don't want to penalize positive pair)
-        cost = cost.masked_fill(mask, 0)
-        
-        # Keep only positive costs (ReLU)
-        cost = F.relu(cost)
-        
-        # Mean over valid negatives
-        # number of negatives per row is B-1
-        return cost.sum() / (scores.size(0) * (scores.size(0) - 1))
-
-
-# =========================================================
-# Training and Evaluation (Modified)
-# =========================================================
-def train_epoch(mol_enc, loader, optimizer, device, loss_fn, loss_type='mse'):
+def train_epoch(mol_enc, loader, optimizer, device):
     mol_enc.train()
+
     total_loss, total = 0.0, 0
-    
     for graphs, text_emb in loader:
         graphs = graphs.to(device)
         text_emb = text_emb.to(device)
@@ -147,10 +76,7 @@ def train_epoch(mol_enc, loader, optimizer, device, loss_fn, loss_type='mse'):
         mol_vec = mol_enc(graphs)
         txt_vec = F.normalize(text_emb, dim=-1)
 
-        if loss_type == 'mse':
-            loss = loss_fn(mol_vec, txt_vec)
-        else:
-            loss = loss_fn(mol_vec, txt_vec)
+        loss = F.mse_loss(mol_vec, txt_vec)
 
         optimizer.zero_grad()
         loss.backward()
@@ -183,76 +109,56 @@ def eval_retrieval(data_path, emb_dict, mol_enc, device):
     N = all_txt.size(0)
     device = sims.device
     correct = torch.arange(N, device=device)
+
     pos = (ranks == correct.unsqueeze(1)).nonzero()[:, 1] + 1
+
     mrr = (1.0 / pos.float()).mean().item()
 
     results = {"MRR": mrr}
+
     for k in (1, 5, 10):
         hitk = (pos <= k).float().mean().item()
+        results[f"R@{k}"] = hitk
         results[f"Hit@{k}"] = hitk
 
     return results
 
 
+
 # =========================================================
-# Main
+# Main Training Loop
 # =========================================================
 def main():
-    parser = argparse.ArgumentParser(description="Train Graph Captioning Model")
-    parser.add_argument("--loss", type=str, default="mse", choices=["mse", "triplet"], help="Loss function to use")
-    parser.add_argument("--margin", type=float, default=0.2, help="Margin for Triplet Loss")
-    parser.add_argument("--epochs", type=int, default=5, help="Number of epochs")
-    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    
-    args = parser.parse_args()
-    
     print(f"Device: {DEVICE}")
-    print(f"Config: Loss={args.loss}, Margin={args.margin}, Epochs={args.epochs}, LR={args.lr}, BS={args.batch_size}")
 
     train_emb = load_id2emb(TRAIN_EMB_CSV)
     val_emb = load_id2emb(VAL_EMB_CSV) if os.path.exists(VAL_EMB_CSV) else None
-    
+
     emb_dim = len(next(iter(train_emb.values())))
 
     if not os.path.exists(TRAIN_GRAPHS):
-        print(f"Error: {TRAIN_GRAPHS} not found")
+        print(f"Error: Preprocessed graphs not found at {TRAIN_GRAPHS}")
+        print("Please run: python prepare_graph_data.py")
         return
     
     train_ds = PreprocessedGraphDataset(TRAIN_GRAPHS, train_emb)
-    train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+    train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
 
     mol_enc = MolGNN(out_dim=emb_dim).to(DEVICE)
-    optimizer = torch.optim.Adam(mol_enc.parameters(), lr=args.lr)
 
-    # Select Loss
-    if args.loss == 'mse':
-        loss_fn = nn.MSELoss()
-    elif args.loss == 'triplet':
-        loss_fn = TripletLoss(margin=args.margin)
-    else:
-        raise ValueError(f"Unknown loss: {args.loss}")
+    optimizer = torch.optim.Adam(mol_enc.parameters(), lr=LR)
 
-    # Training Loop
-    for ep in range(args.epochs):
-        train_loss = train_epoch(mol_enc, train_dl, optimizer, DEVICE, loss_fn, args.loss)
+    for ep in range(EPOCHS):
+        train_loss = train_epoch(mol_enc, train_dl, optimizer, DEVICE)
         if val_emb is not None and os.path.exists(VAL_GRAPHS):
             val_scores = eval_retrieval(VAL_GRAPHS, val_emb, mol_enc, DEVICE)
         else:
             val_scores = {}
-        
-        # Format scores for printing
-        val_str = ", ".join([f"{k}: {v:.4f}" for k, v in val_scores.items()])
-        print(f"Epoch {ep+1}/{args.epochs} | Loss: {train_loss:.5f} | Val: {val_str}")
+        print(f"Epoch {ep+1}/{EPOCHS} - loss={train_loss:.4f} - val={val_scores}")
     
-    # Save Model
-    if args.loss == 'triplet':
-        model_name = f"checkpoints/model_triplet_m{args.margin}_lr{args.lr}_ep{args.epochs}.pt"
-    else:
-        model_name = f"checkpoints/model_mse_lr{args.lr}_ep{args.epochs}.pt"
-        
-    torch.save(mol_enc.state_dict(), model_name)
-    print(f"\nModel saved to {model_name}")
+    model_path = "model_checkpoint.pt"
+    torch.save(mol_enc.state_dict(), model_path)
+    print(f"\nModel saved to {model_path}")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,4 @@
 import os
-import argparse
 
 import pandas as pd
 import torch
@@ -82,16 +81,9 @@ def retrieve_descriptions(model, train_data, test_data, train_emb_dict, device, 
 def main():
     print(f"Device: {DEVICE}")
     
-    parser = argparse.ArgumentParser(description="Generate Kaggle Submission from Trained Model")
-    parser.add_argument("--model_path", type=str, default="checkpoints/model_checkpoint.pt", help="Path to the trained model checkpoint")
-    parser.add_argument("--output_csv", type=str, default="test_retrieved_descriptions.csv", help="Path to save the output CSV")
-    args = parser.parse_args()
-
-    print(f"Device: {DEVICE}")
+    output_csv = "test_retrieved_descriptions.csv"
     
-    output_csv = args.output_csv
-    model_path = args.model_path
-    
+    model_path = "model_checkpoint.pt"
     if not os.path.exists(model_path):
         print(f"Error: Model checkpoint '{model_path}' not found.")
         print("Please train a model first using train_gcn.py")
