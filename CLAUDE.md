@@ -4,68 +4,105 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Molecule-Text Retrieval system for the ALTEGRAD Kaggle Data Challenge on Molecular Graph Captioning. Uses a Graph Convolutional Network (GCN) to encode molecular graphs and match them with text descriptions via embedding-based retrieval.
+Molecule-Text system for the ALTEGRAD Kaggle Data Challenge on Molecular Graph Captioning. Two approaches:
+1. **Retrieval-based**: GNN encodes molecular graphs, matches with text descriptions via contrastive embedding
+2. **Generative**: GNN + Qwen3-0.6B LLM with LoRA for caption generation
 
-**Reference Document**: Always read `ALTEGRAD_Data_Challenge__Molecular_Graph_Captioning-3.pdf` for challenge context before making significant changes.
+**Reference Document**: Read `ALTEGRAD_Data_Challenge__Molecular_Graph_Captioning-3.pdf` for challenge context.
 
 ## Environment
 
-Use the WSL virtual environment for all Python commands:
 ```bash
 source /home/axel/wsl_venv/bin/activate
 ```
 
 ## Commands
 
+### Retrieval Pipeline (current best)
+
 ```bash
-# Activate venv first
-source /home/axel/wsl_venv/bin/activate
+# Generate BERT embeddings for text descriptions
+python generate_description_embeddings_v1.py
 
-# Install dependencies
-pip install -r requirements.txt
+# Train contrastive GNN (CLIP-style with memory queue)
+python train_gcn_v5.py
 
-# Full pipeline (run in order)
-python inspect_graph_data.py           # Validate graph structure
-python generate_description_embeddings.py  # Generate BERT embeddings
-python train_gcn.py                    # Train GCN model
-python retrieval_answer.py             # Generate submission CSV
+# Generate submission via retrieval or RAG
+python retrieval_answer_test_v5.py  # Pure retrieval
+python retrieval_answer_test_v6.py  # RAG with Flan-T5
+```
 
-# Individual commands
-python train_gcn.py          # Train with existing embeddings (creates model_checkpoint.pt)
-python retrieval_answer.py   # Generate test_retrieved_descriptions.csv
+### Generative Pipeline (experimental)
+
+```bash
+cd mol-caption-code
+
+# Quick test (~5 min) / Medium (~1 hour) / Full (~9 hours)
+python run.py --mode quick
+python run.py --mode medium
+python run.py --mode full
+
+# Inference only
+python run.py --inference --checkpoint outputs/stage2_best.pt
+```
+
+### Utilities
+
+```bash
+python inspect_graph_data.py  # Validate graph structure
+python plot_logs.py           # Visualize training logs
 ```
 
 ## Architecture
 
 ### Data Flow
-1. **Graphs** (`data/*.pkl`): PyTorch Geometric Data objects with molecular topology and text descriptions
-2. **Embeddings** (`data/*_embeddings.csv`): BERT embeddings (768-dim) for text descriptions
-3. **Output**: CSV with ID and retrieved description
 
-### Key Components
+1. **Graphs** (`data/*.pkl`): PyTorch Geometric Data objects with molecular topology
+2. **Embeddings** (`data/*_embeddings_v1.csv`): BERT embeddings (768-dim) for descriptions
+3. **Checkpoints** (`checkpoints/gnn_v*.pt`): Trained GNN models
+4. **Outputs** (`outputs/*.csv`): Submission files
 
-| File | Purpose |
-|------|---------|
-| `data_utils.py` | Data loading utilities: `PreprocessedGraphDataset`, `collate_fn`, feature maps (x_map, e_map) |
-| `train_gcn.py` | GCN model (`MolGNN`) and training loop |
-| `generate_description_embeddings.py` | BERT embedding generation using `bert-base-uncased` |
-| `retrieval_answer.py` | Inference and retrieval for submission |
+### Retrieval Model (train_gcn_v5.py)
 
-### Model Architecture (MolGNN)
-- 3 GCNConv layers (hidden_dim=128)
-- Global add pooling → Linear projection to 768-dim
-- L2 normalized embeddings
-- MSE loss between molecule and text embeddings
+- **Architecture**: GINEConv layers with residual connections + Attentional Aggregation
+- **Loss**: CLIP-style contrastive with 64K memory queue
+- **Training**: Cosine LR scheduler, early stopping on validation MRR
+- **Saves**: `checkpoints/gnn_v5.pt` (last), `checkpoints/gnn_v5_best.pt` (best)
+
+Key hyperparameters:
+- HIDDEN=512, LAYERS=5, BATCH_SIZE=256
+- LR=2e-4, EPOCHS=80, PATIENCE=6
+- QUEUE_SIZE=65536
+
+### Generative Model (mol-caption-code/)
+
+Two-stage training:
+1. **Stage 1 (Alignment)**: Train projector to map GNN→LLM space (MSE loss), freeze GNN+LLM
+2. **Stage 2 (SFT)**: Train projector + LoRA jointly (Cross-Entropy), generate captions
+
+Components:
+- `model_gnn.py`: MolGNN encoder (matches train_gcn architecture)
+- `model_projector.py`: 3-layer MLP (768→1024→1024) "Solid Bridge"
+- `model_wrapper.py`: MolCaptionModel combining GNN + Projector + Qwen3-0.6B
+- `config.py`: Experiment modes (quick/medium/full) and hyperparameters
+
+### Data Utilities (data_utils.py)
+
+- `PreprocessedGraphDataset`: Loads graphs + optional text embeddings
+- `collate_fn`: Batches graphs with PyG's `Batch.from_data_list`
+- `load_id2emb`: Loads CSV embeddings to dict
+- `x_map`, `e_map`: Node/edge feature vocabularies
 
 ### Graph Features
-- **Node**: atomic_num, chirality, degree, formal_charge, num_hs, hybridization, is_aromatic, is_in_ring
-- **Edge**: bond_type, stereo, is_conjugated
 
-## Key Hyperparameters (train_gcn.py)
+- **Node (9)**: atomic_num, chirality, degree, formal_charge, num_hs, num_radical_electrons, hybridization, is_aromatic, is_in_ring
+- **Edge (3)**: bond_type, stereo, is_conjugated
 
-- BATCH_SIZE: 32
-- EPOCHS: 5
-- LEARNING_RATE: 1e-3
-- EMBEDDING_DIM: 768
-- GNN_HIDDEN: 128
-- GNN_LAYERS: 3
+## Versioning Convention
+
+Files use version suffixes (e.g., `train_gcn_v5.py`, `retrieval_answer_test_v6.py`). Use the highest version number for the latest approach.
+
+## Notebooks
+
+- `gen_caption_notebook.ipynb`: Generative captioning experiments (for Kaggle)
+- `notebook.ipynb`: General experimentation

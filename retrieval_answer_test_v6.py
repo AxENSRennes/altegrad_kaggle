@@ -203,7 +203,7 @@ def main():
     tok = AutoTokenizer.from_pretrained(LM_NAME)
 
     if DEVICE == "cuda":
-        lm = AutoModelForSeq2SeqLM.from_pretrained(LM_NAME, torch_dtype=torch.float16).to(DEVICE)
+        lm = AutoModelForSeq2SeqLM.from_pretrained(LM_NAME, dtype=torch.float16).to(DEVICE)
     else:
         lm = AutoModelForSeq2SeqLM.from_pretrained(LM_NAME).to(DEVICE)
 

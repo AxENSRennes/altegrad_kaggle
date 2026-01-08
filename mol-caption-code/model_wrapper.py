@@ -106,7 +106,7 @@ class MolCaptionModel(nn.Module):
             print("Loading LLM without quantization (CPU mode)")
             self.llm = AutoModelForCausalLM.from_pretrained(
                 config.llm_name,
-                torch_dtype=torch.float32,
+                dtype=torch.float32,
                 device_map={"": device},
                 trust_remote_code=True,
             )
