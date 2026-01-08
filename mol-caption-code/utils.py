@@ -59,9 +59,11 @@ def graph_to_smiles(graph) -> str:
     try:
         from rdkit import Chem
         from rdkit.Chem import RWMol
-    except Exception:
-        # Catch any import errors including numpy 2.x incompatibility (_ARRAY_API not found)
-        return ""
+    except ImportError as e:
+        raise ImportError(
+            "RDKit is required for SMILES reconstruction. "
+            "Install it with: pip install rdkit"
+        ) from e
 
     try:
         mol = RWMol()
