@@ -19,6 +19,11 @@ def is_kaggle() -> bool:
     return os.path.exists("/kaggle/input")
 
 
+def is_colab() -> bool:
+    """Detect if running on Google Colab."""
+    return os.path.exists("/content") and not is_kaggle()
+
+
 @dataclass
 class Config:
     """Configuration for molecular captioning training."""
@@ -27,17 +32,20 @@ class Config:
     experiment_mode: str = "quick"
 
     # === Paths ===
-    # Auto-detect Kaggle vs local
+    # Auto-detect Kaggle vs Colab vs local
     data_dir: str = field(default_factory=lambda: (
         "/kaggle/input/altegrad-2024" if is_kaggle()
+        else "/content/altegrad_kaggle/data" if is_colab()
         else "data"
     ))
     gnn_checkpoint: str = field(default_factory=lambda: (
         "/kaggle/input/gnn-checkpoints/gnn_v4_best.pt" if is_kaggle()
+        else "/content/altegrad_kaggle/checkpoints/gnn_v4_best.pt" if is_colab()
         else "checkpoints/gnn_v4_best.pt"
     ))
     output_dir: str = field(default_factory=lambda: (
         "/kaggle/working" if is_kaggle()
+        else "/content/altegrad_kaggle/outputs" if is_colab()
         else "outputs"
     ))
 
