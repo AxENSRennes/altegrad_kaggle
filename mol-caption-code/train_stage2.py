@@ -160,7 +160,7 @@ def train_stage2(
                         "stage2/lr_proj": optimizer.param_groups[0]["lr"],
                         "stage2/lr_lora": optimizer.param_groups[1]["lr"],
                         "stage2/step": global_step,
-                    }, step=global_step)
+                    })
 
                 accum_loss = 0.0
                 accum_steps = 0
@@ -188,7 +188,7 @@ def train_stage2(
                         "eval/loss": val_metrics["loss"],
                         "eval/bleu4": val_metrics["bleu4"],
                         "eval/meteor": val_metrics["meteor"],
-                    }, step=global_step)
+                    })
 
                 model.projector.train()
                 model.llm.train()
@@ -217,7 +217,7 @@ def train_stage2(
                 "stage2/val_loss": val_metrics["loss"],
                 "stage2/val_bleu4": val_metrics["bleu4"],
                 "stage2/val_meteor": val_metrics["meteor"],
-            }, step=global_step)
+            })
 
         # Save best model (by BLEU-4)
         if val_metrics["bleu4"] > best_bleu4:

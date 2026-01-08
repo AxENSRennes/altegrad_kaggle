@@ -173,7 +173,7 @@ def train_stage1(
                     "stage1/loss": loss.item(),
                     "stage1/lr": scheduler.get_last_lr()[0],
                     "stage1/step": global_step,
-                }, step=global_step)
+                })
 
         # Epoch metrics
         avg_train_loss = epoch_loss / max(num_batches, 1)
@@ -196,7 +196,7 @@ def train_stage1(
                 "stage1/train_loss": avg_train_loss,
                 "stage1/val_loss": val_loss,
                 "stage1/val_cos_sim": val_cos_sim,
-            }, step=global_step)
+            })
 
         # Save best model
         if val_loss < best_val_loss:
