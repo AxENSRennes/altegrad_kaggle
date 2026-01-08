@@ -152,12 +152,12 @@ class Config:
         return os.path.join(self.output_dir, "submission.csv")
 
 
-# Prompt template for caption generation
-PROMPT_TEMPLATE = """<|user|>
+# Prompt template for caption generation (Qwen3 chat format)
+PROMPT_TEMPLATE = """<|im_start|>user
 Molecule Structure: <|graph|>
 SMILES: {smiles}
-Task: Describe the molecule's chemical properties and functional groups.
-<|assistant|>
+Task: Describe the molecule's chemical properties and functional groups.<|im_end|>
+<|im_start|>assistant
 """
 
 
