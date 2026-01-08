@@ -71,7 +71,11 @@ def train_stage2(
     for param in model.projector.parameters():
         param.requires_grad = True
 
-    # LoRA parameters are already trainable from PEFT setup
+    # Re-enable LoRA parameters (may have been frozen in Stage 1)
+    for name, param in model.llm.named_parameters():
+        if "lora" in name.lower():
+            param.requires_grad = True
+
     model.llm.print_trainable_parameters()
 
     # Separate parameter groups with different learning rates

@@ -174,8 +174,8 @@ class MolCaptionModel(nn.Module):
         Returns:
             Modified input embeddings [batch_size, seq_len, llm_hidden]
         """
-        # Get text embeddings from LLM
-        inputs_embeds = self.llm.get_input_embeddings()(input_ids)
+        # Get text embeddings from LLM (clone to avoid in-place modification of leaf variable)
+        inputs_embeds = self.llm.get_input_embeddings()(input_ids).clone()
 
         # Find <|graph|> token positions
         graph_positions = (input_ids == self.graph_token_id)
