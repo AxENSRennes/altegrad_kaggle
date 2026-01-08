@@ -14,14 +14,18 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
-def is_kaggle() -> bool:
-    """Detect if running on Kaggle."""
-    return os.path.exists("/kaggle/input")
-
-
 def is_colab() -> bool:
     """Detect if running on Google Colab."""
-    return os.path.exists("/content") and not is_kaggle()
+    try:
+        import google.colab
+        return True
+    except ImportError:
+        return False
+
+
+def is_kaggle() -> bool:
+    """Detect if running on Kaggle."""
+    return os.path.exists("/kaggle/input") and not is_colab()
 
 
 @dataclass
