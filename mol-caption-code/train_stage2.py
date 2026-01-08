@@ -174,8 +174,9 @@ def train_stage2(
                 "lr": f"{scheduler.get_last_lr()[0]:.2e}",
             })
 
-            # Periodic evaluation
-            if (batch_idx + 1) % (config.eval_every_n_steps * config.stage2_grad_accum) == 0:
+            # Periodic evaluation (can be skipped via config)
+            if (not config.skip_eval_during_training and
+                (batch_idx + 1) % (config.eval_every_n_steps * config.stage2_grad_accum) == 0):
                 val_metrics, samples = evaluate_generation(
                     model, val_loader, device, config, max_samples=50
                 )

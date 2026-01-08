@@ -82,6 +82,7 @@ class Config:
     stage2_epochs: int = 2  # reduced from 5 (SFT overfits quickly)
     stage2_warmup_steps: int = 100  # reduced proportionally
     eval_every_n_steps: int = 100
+    skip_eval_during_training: bool = False  # Skip periodic validation to speed up training
 
     # === General Training ===
     max_seq_length: int = 256
