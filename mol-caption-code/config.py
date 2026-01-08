@@ -145,15 +145,15 @@ class Config:
 
     @property
     def stage1_checkpoint_path(self) -> str:
-        return os.path.join(self.output_dir, "stage1_best.pt")
+        return os.path.join(self.output_dir, f"stage1_{self.experiment_mode}_best.pt")
 
     @property
     def stage2_checkpoint_path(self) -> str:
-        return os.path.join(self.output_dir, "stage2_best.pt")
+        return os.path.join(self.output_dir, f"stage2_{self.experiment_mode}_best.pt")
 
     @property
     def submission_path(self) -> str:
-        return os.path.join(self.output_dir, "submission.csv")
+        return os.path.join(self.output_dir, f"submission_{self.experiment_mode}.csv")
 
 
 # Prompt template for caption generation (Qwen3 chat format)
