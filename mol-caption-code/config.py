@@ -125,6 +125,7 @@ class Config:
             self.train_subset = None  # Use all data
             self.val_subset = None
             self.eval_every_n_steps = 200
+            self.skip_eval_during_training = True  # skip mid-epoch eval for speed
         else:
             raise ValueError(f"Unknown experiment mode: {self.experiment_mode}")
 
