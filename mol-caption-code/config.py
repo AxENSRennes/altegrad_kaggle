@@ -111,12 +111,14 @@ class Config:
             self.stage1_warmup_steps = 10
             self.stage2_warmup_steps = 20
             self.stage2_grad_accum = 1  # faster iteration for quick test
+            self.skip_eval_during_training = True  # skip mid-epoch eval for speed
         elif self.experiment_mode == "medium":
             self.stage1_epochs = 2
             self.stage2_epochs = 2
             self.train_subset = 5000
             self.val_subset = 500
             self.eval_every_n_steps = 100
+            self.skip_eval_during_training = True  # skip mid-epoch eval for speed
         elif self.experiment_mode == "full":
             self.stage1_epochs = 3
             self.stage2_epochs = 5
