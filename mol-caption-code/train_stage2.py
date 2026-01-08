@@ -159,7 +159,6 @@ def train_stage2(
                         "stage2/loss": accum_loss / accum_steps,
                         "stage2/lr_proj": optimizer.param_groups[0]["lr"],
                         "stage2/lr_lora": optimizer.param_groups[1]["lr"],
-                        "stage2/step": global_step,
                     })
 
                 accum_loss = 0.0
