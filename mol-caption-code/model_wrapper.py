@@ -64,7 +64,7 @@ class MolCaptionModel(nn.Module):
             hidden_dim=config.proj_hidden,
             out_dim=config.llm_hidden,
             dropout=config.lora_dropout,
-        )
+        ).to(device)
 
         # 3. Load tokenizer first to get vocab size
         from transformers import AutoTokenizer
