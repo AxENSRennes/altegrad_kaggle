@@ -59,7 +59,8 @@ def graph_to_smiles(graph) -> str:
     try:
         from rdkit import Chem
         from rdkit.Chem import RWMol
-    except ImportError:
+    except Exception:
+        # Catch any import errors including numpy 2.x incompatibility (_ARRAY_API not found)
         return ""
 
     try:

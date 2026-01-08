@@ -64,11 +64,11 @@ class Config:
 
     # === Stage 2: SFT Training ===
     stage2_batch_size: int = 8
-    stage2_grad_accum: int = 8
-    stage2_lr_proj: float = 5e-4
-    stage2_lr_lora: float = 2e-4
-    stage2_epochs: int = 5
-    stage2_warmup_steps: int = 200
+    stage2_grad_accum: int = 2  # effective batch = 16 (better for SFT)
+    stage2_lr_proj: float = 1e-4  # reduced from 5e-4
+    stage2_lr_lora: float = 1e-5  # reduced from 2e-4 (prevents forgetting)
+    stage2_epochs: int = 2  # reduced from 5 (SFT overfits quickly)
+    stage2_warmup_steps: int = 100  # reduced proportionally
     eval_every_n_steps: int = 100
 
     # === General Training ===
@@ -97,6 +97,7 @@ class Config:
             self.eval_every_n_steps = 50
             self.stage1_warmup_steps = 10
             self.stage2_warmup_steps = 20
+            self.stage2_grad_accum = 1  # faster iteration for quick test
         elif self.experiment_mode == "medium":
             self.stage1_epochs = 2
             self.stage2_epochs = 2
