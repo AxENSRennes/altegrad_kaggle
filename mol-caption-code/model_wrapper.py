@@ -372,13 +372,10 @@ class MolCaptionModel(nn.Module):
         )
 
         # Decode outputs
+        # Note: When using inputs_embeds, generate() returns only new tokens (not the prompt)
         generated_texts = []
-        prompt_lengths = [len(self.tokenizer.encode(p)) for p in prompts]
-
-        for i, output in enumerate(outputs):
-            # Skip prompt tokens
-            generated_ids = output[prompt_lengths[i]:]
-            text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        for output in outputs:
+            text = self.tokenizer.decode(output, skip_special_tokens=True)
             generated_texts.append(text.strip())
 
         return generated_texts
