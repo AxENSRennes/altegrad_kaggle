@@ -222,9 +222,9 @@ def train_stage2(
         # Save best model (by BLEU-4)
         if val_metrics["bleu4"] > best_bleu4:
             best_bleu4 = val_metrics["bleu4"]
-            best_val_loss = val_metrics["loss"]
+            bleu_path = config.stage2_checkpoint_path.replace(".pt", "_best_bleu.pt")
             save_checkpoint(
-                config.stage2_checkpoint_path,
+                bleu_path,
                 model,
                 optimizer,
                 scheduler,
@@ -232,7 +232,34 @@ def train_stage2(
                 metrics=val_metrics,
                 config=config,
             )
-            print_best_model_saved(config.stage2_checkpoint_path, "bleu4", best_bleu4)
+            print_best_model_saved(bleu_path, "bleu4", best_bleu4)
+
+        # Save best model (by loss)
+        if val_metrics["loss"] < best_val_loss:
+            best_val_loss = val_metrics["loss"]
+            loss_path = config.stage2_checkpoint_path.replace(".pt", "_best_loss.pt")
+            save_checkpoint(
+                loss_path,
+                model,
+                optimizer,
+                scheduler,
+                epoch=epoch + 1,
+                metrics=val_metrics,
+                config=config,
+            )
+            print(f"  [New Best Loss] {best_val_loss:.4f} - Saved to {loss_path}")
+
+        # Always save a 'latest' checkpoint for safety
+        latest_path = config.stage2_checkpoint_path.replace(".pt", "_latest.pt")
+        save_checkpoint(
+            latest_path,
+            model,
+            optimizer,
+            scheduler,
+            epoch=epoch + 1,
+            metrics=val_metrics,
+            config=config,
+        )
 
     # Final report
     final_metrics = {
@@ -251,6 +278,19 @@ def train_stage2(
         epoch=config.stage2_epochs,
         total_epochs=config.stage2_epochs,
     )
+
+    # Final redundant save
+    final_path = config.stage2_checkpoint_path.replace(".pt", "_final.pt")
+    save_checkpoint(
+        final_path,
+        model,
+        optimizer,
+        scheduler,
+        epoch=config.stage2_epochs,
+        metrics=final_metrics,
+        config=config,
+    )
+    print(f"Final model saved to {final_path}")
 
     return final_metrics
 
