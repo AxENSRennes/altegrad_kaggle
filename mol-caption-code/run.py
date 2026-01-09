@@ -136,12 +136,17 @@ def main():
         type=str,
         help="Path to checkpoint for inference"
     )
+    parser.add_argument(
+        "--output",
+        type=str,
+        help="Path to output CSV for inference"
+    )
     args = parser.parse_args()
 
     if args.inference:
         # Inference only
         config = get_config(mode=args.mode)
-        run_inference(config, checkpoint_path=args.checkpoint)
+        run_inference(config, checkpoint_path=args.checkpoint, output_path=args.output)
     else:
         # Full training
         train_full_pipeline(
