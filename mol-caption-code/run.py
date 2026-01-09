@@ -141,12 +141,17 @@ def main():
         type=str,
         help="Path to output CSV for inference"
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Limit inference to first N molecules (for testing)"
+    )
     args = parser.parse_args()
 
     if args.inference:
         # Inference only
         config = get_config(mode=args.mode)
-        run_inference(config, checkpoint_path=args.checkpoint, output_path=args.output)
+        run_inference(config, checkpoint_path=args.checkpoint, output_path=args.output, limit=args.limit)
     else:
         # Full training
         train_full_pipeline(

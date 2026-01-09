@@ -56,6 +56,7 @@ def generate_submissions(
     num_beams: int = 1,
     temperature: float = 0.7,
     do_sample: bool = True,
+    limit: Optional[int] = None,
 ) -> List[tuple]:
     """
     Generate captions for all test molecules.
@@ -68,6 +69,7 @@ def generate_submissions(
         num_beams: Beam search width
         temperature: Sampling temperature
         do_sample: Whether to use sampling
+        limit: Optional limit on number of molecules to process
 
     Returns:
         List of (mol_id, caption) tuples
@@ -77,6 +79,9 @@ def generate_submissions(
 
     # Load test data
     test_dataset = TestDataset(config.test_graphs_path)
+    if limit is not None:
+        test_dataset.graphs = test_dataset.graphs[:limit]
+        print(f"Limited to first {limit} molecules")
     test_loader = DataLoader(
         test_dataset,
         batch_size=batch_size,
@@ -157,6 +162,7 @@ def run_inference(
     config: Optional[Config] = None,
     checkpoint_path: Optional[str] = None,
     output_path: Optional[str] = None,
+    limit: Optional[int] = None,
 ):
     """
     Run full inference pipeline.
@@ -165,6 +171,7 @@ def run_inference(
         config: Optional config object (uses default if None)
         checkpoint_path: Optional checkpoint path (uses config default if None)
         output_path: Optional output path (uses config default if None)
+        limit: Optional limit on number of molecules to process
     """
     # Setup
     if config is None:
@@ -199,6 +206,7 @@ def run_inference(
         num_beams=1,
         temperature=0.7,
         do_sample=True,
+        limit=limit,
     )
 
     # Save
