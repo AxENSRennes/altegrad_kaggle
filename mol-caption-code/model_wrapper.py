@@ -81,6 +81,9 @@ class MolCaptionModel(nn.Module):
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
+        # IMPORTANT: Use left padding for generation (decoder-only models)
+        self.tokenizer.padding_side = "left"
+
         self.graph_token_id = self.tokenizer.convert_tokens_to_ids("<|graph|>")
 
         # 4. Load LLM (4-bit quantization on CUDA, full precision on CPU)
