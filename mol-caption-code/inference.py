@@ -163,6 +163,7 @@ def run_inference(
     checkpoint_path: Optional[str] = None,
     output_path: Optional[str] = None,
     limit: Optional[int] = None,
+    batch_size: Optional[int] = None,
 ):
     """
     Run full inference pipeline.
@@ -172,6 +173,7 @@ def run_inference(
         checkpoint_path: Optional checkpoint path (uses config default if None)
         output_path: Optional output path (uses config default if None)
         limit: Optional limit on number of molecules to process
+        batch_size: Optional batch size for generation
     """
     # Setup
     if config is None:
@@ -201,7 +203,7 @@ def run_inference(
     results = generate_submissions(
         model,
         config,
-        batch_size=8,
+        batch_size=batch_size or 8,
         max_new_tokens=128,
         num_beams=1,
         temperature=0.7,
@@ -231,10 +233,12 @@ def main():
     parser.add_argument("--mode", type=str, default="full", help="Experiment mode")
     parser.add_argument("--checkpoint", type=str, help="Path to checkpoint")
     parser.add_argument("--output", type=str, help="Path to output CSV")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for generation")
+    parser.add_argument("--limit", type=int, help="Limit number of molecules")
     args = parser.parse_args()
 
     config = get_config(mode=args.mode)
-    run_inference(config, args.checkpoint, args.output)
+    run_inference(config, args.checkpoint, args.output, limit=args.limit, batch_size=args.batch_size)
 
 
 if __name__ == "__main__":

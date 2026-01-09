@@ -146,12 +146,24 @@ def main():
         type=int,
         help="Limit inference to first N molecules (for testing)"
     )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=8,
+        help="Batch size for inference"
+    )
     args = parser.parse_args()
 
     if args.inference:
         # Inference only
         config = get_config(mode=args.mode)
-        run_inference(config, checkpoint_path=args.checkpoint, output_path=args.output, limit=args.limit)
+        run_inference(
+            config, 
+            checkpoint_path=args.checkpoint, 
+            output_path=args.output, 
+            limit=args.limit,
+            batch_size=args.batch_size
+        )
     else:
         # Full training
         train_full_pipeline(
