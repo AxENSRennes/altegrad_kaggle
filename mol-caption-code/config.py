@@ -40,12 +40,12 @@ class Config:
     data_dir: str = field(default_factory=lambda: (
         "/kaggle/input/altegrad-2024" if is_kaggle()
         else "/content/altegrad_kaggle/data" if is_colab()
-        else "data"
+        else "/home/axel/Altegrad_kaggle/data"
     ))
     gnn_checkpoint: str = field(default_factory=lambda: (
         "/kaggle/input/gnn-checkpoints/gnn_v4_best.pt" if is_kaggle()
         else "/content/altegrad_kaggle/checkpoints/gnn_v4_best.pt" if is_colab()
-        else "checkpoints/gnn_v4_best.pt"
+        else "/home/axel/Altegrad_kaggle/checkpoints/gnn_v4_best.pt"
     ))
     output_dir: str = field(default_factory=lambda: (
         "/kaggle/working" if is_kaggle()
@@ -97,7 +97,7 @@ class Config:
     # === Logging ===
     use_wandb: bool = True
     wandb_project: str = "mol-caption-gen"
-    log_every_n_steps: int = 10
+    log_every_n_steps: int = 5
 
     # === Subset for quick experiments ===
     train_subset: Optional[int] = None  # Set by apply_mode()

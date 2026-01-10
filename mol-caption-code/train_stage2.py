@@ -23,7 +23,13 @@ from config import Config
 from model_wrapper import MolCaptionModel
 from dataset_caption import prepare_dataloaders
 from metrics import compute_metrics
-from utils import save_checkpoint, load_checkpoint, WandBLogger, graph_to_smiles
+from utils import (
+    save_checkpoint, 
+    load_checkpoint, 
+    WandBLogger, 
+    graph_to_smiles, 
+    get_grad_norm
+)
 from report import (
     print_progress_header,
     print_training_report,
@@ -159,7 +165,9 @@ def train_stage2(
                         "stage2/loss": accum_loss / accum_steps,
                         "stage2/lr_proj": optimizer.param_groups[0]["lr"],
                         "stage2/lr_lora": optimizer.param_groups[1]["lr"],
-                    })
+                        "stage2/grad_norm_proj": get_grad_norm(model.projector),
+                        "stage2/grad_norm_lora": get_grad_norm(model.llm),
+                    }, step=global_step)
 
                 accum_loss = 0.0
                 accum_steps = 0
@@ -188,7 +196,19 @@ def train_stage2(
                         "eval/loss": val_metrics["loss"],
                         "eval/bleu4": val_metrics["bleu4"],
                         "eval/meteor": val_metrics["meteor"],
-                    })
+                    }, step=global_step)
+                    
+                    # Log sample table
+                    if samples:
+                        table_data = []
+                        for pred, ref, sm in samples:
+                            table_data.append([sm, ref, pred])
+                        logger.log_table(
+                            "eval/samples",
+                            columns=["SMILES", "Reference", "Prediction"],
+                            data=table_data,
+                            step=global_step
+                        )
 
                 model.projector.train()
                 model.llm.train()
@@ -209,15 +229,25 @@ def train_stage2(
             val_metrics
         )
 
-        # Log to W&B
+        # Log to W&B (epoch metrics)
         if logger:
             logger.log({
                 "stage2/epoch": epoch + 1,
-                "stage2/train_loss": avg_train_loss,
+                "stage2/train_loss_epoch": avg_train_loss,
                 "stage2/val_loss": val_metrics["loss"],
                 "stage2/val_bleu4": val_metrics["bleu4"],
                 "stage2/val_meteor": val_metrics["meteor"],
-            })
+            }, step=global_step)
+            
+            # Log sample table for epoch
+            if samples:
+                table_data = [[sm, ref, pred] for pred, ref, sm in samples]
+                logger.log_table(
+                    "stage2/samples_epoch",
+                    columns=["SMILES", "Reference", "Prediction"],
+                    data=table_data,
+                    step=global_step
+                )
 
         # Save best model (by BLEU-4)
         if val_metrics["bleu4"] > best_bleu4:
@@ -302,7 +332,7 @@ def evaluate_generation(
     device: str,
     config: Config,
     max_samples: int = 100,
-) -> Tuple[Dict[str, float], List[Tuple[str, str]]]:
+) -> Tuple[Dict[str, float], List[Tuple[str, str, str]]]:
     """
     Evaluate caption generation on validation set.
 
@@ -314,7 +344,7 @@ def evaluate_generation(
         max_samples: Maximum number of samples to evaluate
 
     Returns:
-        Tuple of (metrics_dict, list of (prediction, reference) pairs)
+        Tuple of (metrics_dict, list of (prediction, reference, smiles) tuples)
     """
     model.projector.eval()
     model.llm.eval()
@@ -322,6 +352,7 @@ def evaluate_generation(
 
     all_predictions = []
     all_references = []
+    all_samples = []  # List of (pred, ref, smiles)
     total_loss = 0.0
     num_batches = 0
     num_samples = 0
@@ -363,6 +394,12 @@ def evaluate_generation(
 
         all_predictions.extend(predictions)
         all_references.extend(descriptions)
+        
+        # Zip with SMILES for the table
+        for p, r, s in zip(predictions, descriptions, smiles):
+            if len(all_predictions) <= max_samples:
+                all_samples.append((p, r, s))
+        
         num_samples += len(descriptions)
 
     # Compute metrics
@@ -375,7 +412,7 @@ def evaluate_generation(
         metrics.update(text_metrics)
 
     # Sample outputs
-    samples = list(zip(all_predictions[:10], all_references[:10]))
+    samples = all_samples[:10]
 
     return metrics, samples
 

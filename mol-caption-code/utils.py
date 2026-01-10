@@ -14,6 +14,9 @@ import os
 import random
 from typing import Dict, Any, Optional
 
+# Fix for RDKit/NumPy compatibility issue: AttributeError: _ARRAY_API not found
+os.environ["NPY_DISABLE_ARRAY_API"] = "1"
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -57,8 +60,13 @@ def graph_to_smiles(graph) -> str:
         SMILES string or empty string if reconstruction fails
     """
     try:
-        from rdkit import Chem
-        from rdkit.Chem import RWMol
+        try:
+            from rdkit import Chem
+            from rdkit.Chem import RWMol
+        except AttributeError as e:
+            if "_ARRAY_API" in str(e):
+                return "SMILES_UNAVAILABLE (RDKit/NumPy Conflict)"
+            raise e
     except ImportError as e:
         raise ImportError(
             "RDKit is required for SMILES reconstruction. "
@@ -231,6 +239,17 @@ def format_params(num_params: int) -> str:
     return str(num_params)
 
 
+def get_grad_norm(model: nn.Module) -> float:
+    """Calculate the global L2 norm of gradients for trainable parameters."""
+    total_norm = 0.0
+    for p in model.parameters():
+        if p.grad is not None and p.requires_grad:
+            param_norm = p.grad.data.norm(2)
+            total_norm += param_norm.item() ** 2
+    
+    return total_norm ** 0.5
+
+
 class WandBLogger:
     """Simple W&B logging wrapper."""
 
@@ -259,6 +278,12 @@ class WandBLogger:
         """Log metrics."""
         if self.enabled and self._wandb is not None:
             self._wandb.log(data, step=step)
+
+    def log_table(self, table_name: str, columns: list, data: list, step: Optional[int] = None):
+        """Log a data table to W&B."""
+        if self.enabled and self._wandb is not None:
+            table = self._wandb.Table(columns=columns, data=data)
+            self._wandb.log({table_name: table}, step=step)
 
     def finish(self):
         """Finish W&B run."""

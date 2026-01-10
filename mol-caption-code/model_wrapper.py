@@ -152,10 +152,12 @@ class MolCaptionModel(nn.Module):
     def process_gnn_embeddings(self, g: torch.Tensor) -> torch.Tensor:
         """
         Apply centering and normalization to match retrieval distribution.
-        Logic: l2norm(g - txt_mean)
+        Logic: l2norm(g - txt_mean) if dimensions match.
         """
         if self.txt_mean is not None:
-            g = g - self.txt_mean
+            # Only apply centering if dimensions match (e.g., GNN = 768, LLM = 1024)
+            if g.size(-1) == self.txt_mean.size(-1):
+                g = g - self.txt_mean
         
         return F.normalize(g, p=2, dim=-1)
 

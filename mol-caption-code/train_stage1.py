@@ -23,7 +23,7 @@ from tqdm import tqdm
 from config import Config
 from model_wrapper import MolCaptionModel
 from dataset_caption import prepare_alignment_dataloaders
-from utils import save_checkpoint, WandBLogger
+from utils import save_checkpoint, WandBLogger, get_grad_norm
 from report import (
     print_progress_header,
     print_training_report,
@@ -149,8 +149,8 @@ def train_stage1(
                 logger.log({
                     "stage1/loss": loss.item(),
                     "stage1/lr": scheduler.get_last_lr()[0],
-                    "stage1/step": global_step,
-                })
+                    "stage1/grad_norm": get_grad_norm(model.projector),
+                }, step=global_step)
 
         # Epoch metrics
         avg_train_loss = epoch_loss / max(num_batches, 1)
@@ -166,14 +166,14 @@ def train_stage1(
             {"val_loss": val_loss, "val_cos_sim": val_cos_sim}
         )
 
-        # Log to W&B
+        # Log to W&B (epoch metrics)
         if logger:
             logger.log({
                 "stage1/epoch": epoch + 1,
-                "stage1/train_loss": avg_train_loss,
+                "stage1/train_loss_epoch": avg_train_loss,
                 "stage1/val_loss": val_loss,
                 "stage1/val_cos_sim": val_cos_sim,
-            })
+            }, step=global_step)
 
         # Save best model
         if val_loss < best_val_loss:
