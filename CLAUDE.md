@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Molecule-Text system for the ALTEGRAD Kaggle Data Challenge on Molecular Graph Captioning. Two approaches:
+Molecule-Text system for the ALTEGRAD Kaggle Data Challenge on Molecular Graph Captioning.
+
+**Kaggle Competition**: `molecular-graph-captioning`
+
+Two approaches:
 1. **Retrieval-based**: GNN encodes molecular graphs, matches with text descriptions via contrastive embedding
 2. **Generative**: GNN + Qwen3-0.6B LLM with LoRA for caption generation
 
