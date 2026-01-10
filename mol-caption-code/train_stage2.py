@@ -43,6 +43,7 @@ def train_stage2(
     config: Config,
     logger: Optional[WandBLogger] = None,
     load_stage1: bool = True,
+    start_step: int = 0,
 ) -> Dict[str, float]:
     """
     Train Stage 2: Supervised Fine-Tuning on caption generation.
@@ -112,7 +113,7 @@ def train_stage2(
     # Training state
     best_val_loss = float("inf")
     best_bleu4 = 0.0
-    global_step = 0
+    global_step = start_step
     accum_loss = 0.0
     accum_steps = 0
 

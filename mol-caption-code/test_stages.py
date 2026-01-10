@@ -44,10 +44,8 @@ def test_pipeline():
     # 3. Test Stage 1 (Alignment)
     print("\n[Step 2/3] Testing Stage 1 Alignment...")
     try:
-        # We manually call a part of train_stage1 or just the loop
-        # For a quick test, we just run the function
-        metrics_s1 = train_stage1(model, config, logger=None)
-        print("Stage 1 execution: SUCCESS")
+        metrics_s1, final_s1_step = train_stage1(model, config, logger=None)
+        print(f"Stage 1 execution: SUCCESS (Final Step: {final_s1_step})")
     except Exception as e:
         print(f"Stage 1 execution: FAILED")
         import traceback
@@ -58,7 +56,7 @@ def test_pipeline():
     print("\n[Step 3/3] Testing Stage 2 SFT...")
     try:
         # Ensure checkpoint exists for stage 2 load (or skip load)
-        metrics_s2 = train_stage2(model, config, logger=None, load_stage1=False)
+        metrics_s2 = train_stage2(model, config, logger=None, load_stage1=False, start_step=final_s1_step)
         print("Stage 2 execution: SUCCESS")
     except Exception as e:
         print(f"Stage 2 execution: FAILED")

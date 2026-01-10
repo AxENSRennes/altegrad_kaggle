@@ -82,7 +82,13 @@ def _print_rich_report(
     # Sample outputs
     if samples:
         console.print("\n[bold]Sample Outputs:[/bold]")
-        for i, (pred, ref) in enumerate(samples[:3]):
+        for i, sample in enumerate(samples[:3]):
+            if len(sample) == 3:
+                pred, ref, smiles = sample
+            else:
+                pred, ref = sample
+                smiles = None
+
             console.print(f"\n[dim]#{i + 1}[/dim]")
 
             # Truncate long outputs
@@ -91,6 +97,8 @@ def _print_rich_report(
 
             console.print(f"  [green]Pred:[/green] {pred_display}")
             console.print(f"  [blue]Ref:[/blue]  {ref_display}")
+            if smiles:
+                console.print(f"  [dim]SMILES:[/dim] {smiles}")
 
     # W&B link hint
     if config is not None and getattr(config, "use_wandb", False):
@@ -125,12 +133,20 @@ def _print_simple_report(
     if samples:
         print("\nSample Outputs:")
         print("-" * 30)
-        for i, (pred, ref) in enumerate(samples[:3]):
+        for i, sample in enumerate(samples[:3]):
+            if len(sample) == 3:
+                pred, ref, smiles = sample
+            else:
+                pred, ref = sample
+                smiles = None
+
             pred_display = pred[:150] + "..." if len(pred) > 150 else pred
             ref_display = ref[:150] + "..." if len(ref) > 150 else ref
             print(f"\n#{i + 1}")
             print(f"  Pred: {pred_display}")
             print(f"  Ref:  {ref_display}")
+            if smiles:
+                print(f"  SMILES: {smiles}")
 
     print("=" * 50 + "\n")
 

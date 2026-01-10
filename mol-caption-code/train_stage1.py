@@ -40,7 +40,7 @@ def train_stage1(
     model: MolCaptionModel,
     config: Config,
     logger: Optional[WandBLogger] = None,
-) -> Dict[str, float]:
+) -> Tuple[Dict[str, float], int]:
     """
     Train Stage 1: Alignment of graph embeddings to LLM text space.
 
@@ -205,7 +205,7 @@ def train_stage1(
         total_epochs=config.stage1_epochs,
     )
 
-    return final_metrics
+    return final_metrics, global_step
 
 
 @torch.no_grad()
