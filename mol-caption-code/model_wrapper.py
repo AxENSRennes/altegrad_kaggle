@@ -14,8 +14,10 @@ in the input sequence, enabling the LLM to generate molecule descriptions.
 
 from typing import Optional, List, Dict, Any
 
+import os
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch_geometric.data import Batch
 
 from model_gnn import MolGNN
@@ -134,7 +136,29 @@ class MolCaptionModel(nn.Module):
             task_type="CAUSAL_LM",
         )
 
+
         self.llm = get_peft_model(self.llm, lora_config)
+
+        # 6. Load txt_mean for centering
+        self.txt_mean = None
+        if config.center_embeddings and os.path.exists(config.txt_mean_path):
+            print(f"Loading txt_mean from {config.txt_mean_path}")
+            self.txt_mean = torch.load(config.txt_mean_path, map_location=device)
+            # Ensure correct dtype (float16 if using quantization/amp)
+            if use_quantization:
+                self.txt_mean = self.txt_mean.half()
+        elif config.center_embeddings:
+            print(f"Warning: center_embeddings=True but {config.txt_mean_path} not found.")
+
+    def process_gnn_embeddings(self, g: torch.Tensor) -> torch.Tensor:
+        """
+        Apply centering and normalization to match retrieval distribution.
+        Logic: l2norm(g - txt_mean)
+        """
+        if self.txt_mean is not None:
+            g = g - self.txt_mean
+        
+        return F.normalize(g, p=2, dim=-1)
 
     def encode_graphs(self, graphs: Batch) -> torch.Tensor:
         """
@@ -153,6 +177,7 @@ class MolCaptionModel(nn.Module):
     def project_to_llm_space(self, graph_embeddings: torch.Tensor) -> torch.Tensor:
         """
         Project GNN embeddings to LLM hidden space.
+        Applies centering and normalization beforehand.
 
         Args:
             graph_embeddings: [batch_size, gnn_out_dim]
@@ -160,6 +185,7 @@ class MolCaptionModel(nn.Module):
         Returns:
             Projected tokens [batch_size, num_tokens, llm_hidden]
         """
+        graph_embeddings = self.process_gnn_embeddings(graph_embeddings)
         return self.projector(graph_embeddings)
 
     def inject_graph_tokens(
@@ -274,8 +300,10 @@ class MolCaptionModel(nn.Module):
         last_hidden = outputs.hidden_states[-1]
         mask = inputs["attention_mask"].unsqueeze(-1)
         pooled = (last_hidden * mask).sum(dim=1) / mask.sum(dim=1)
-
-        return pooled.squeeze(0)
+        
+        # Apply centering and normalization
+        emb = pooled.squeeze(0)
+        return self.process_gnn_embeddings(emb)
 
     def get_batch_text_embeddings(self, texts: List[str]) -> torch.Tensor:
         """
@@ -308,7 +336,8 @@ class MolCaptionModel(nn.Module):
         mask = inputs["attention_mask"].unsqueeze(-1).float()
         pooled = (last_hidden * mask).sum(dim=1) / (mask.sum(dim=1) + 1e-9)
 
-        return pooled
+        # Apply centering and normalization
+        return self.process_gnn_embeddings(pooled)
 
     @torch.no_grad()
     def generate(

@@ -61,6 +61,10 @@ class Config:
     proj_hidden: int = 1024  # Projector hidden dimension
     llm_hidden: int = 1024  # Qwen3-0.6B hidden size
 
+    # === Centering ===
+    center_embeddings: bool = True
+    txt_mean_path: str = "outputs/txt_mean_v1.pt"
+
     # === LoRA Configuration ===
     lora_r: int = 64
     lora_alpha: int = 128
