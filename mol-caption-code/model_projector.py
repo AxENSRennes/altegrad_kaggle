@@ -64,17 +64,27 @@ class SolidBridgeProjector(nn.Module):
         # Layer 3: hidden_dim -> out_dim * num_tokens
         self.layer3 = nn.Sequential(
             nn.Linear(hidden_dim, out_dim * num_tokens),
-            nn.LayerNorm(out_dim * num_tokens),
         )
 
         # Initialize weights
         self._init_weights()
 
     def _init_weights(self):
-        """Initialize weights with small values for stable training."""
-        for module in self.modules():
+        """
+        Initialize weights specifically to target an output norm of ~1.0.
+        Intermediate LayerNorms force a norm of ~32, so the final layer
+        must scale this down (32 * 0.03nd-layer-gain * 0.03final-layer-gain).
+        """
+        for name, module in self.named_modules():
             if isinstance(module, nn.Linear):
-                nn.init.normal_(module.weight, mean=0.0, std=0.02)
+                # If it's the last layer (layer3), we use a very small scale
+                # to cancel out the ~32 norm from the previous LayerNorm.
+                if 'layer3' in name:
+                    std = 0.001 # 32 * 0.001 * sqrt(1024) approx 1.0
+                else:
+                    std = 0.03
+                
+                nn.init.normal_(module.weight, mean=0.0, std=std)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
 

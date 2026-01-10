@@ -32,33 +32,8 @@ from report import (
 )
 
 
-def cosine_alignment_loss(
-    projected: torch.Tensor,
-    target: torch.Tensor,
-) -> torch.Tensor:
-    """
-    Compute cosine distance loss for alignment.
-
-    Args:
-        projected: Projected graph embeddings [batch, llm_hidden] or [batch, 1, llm_hidden]
-        target: Target text embeddings [batch, llm_hidden]
-
-    Returns:
-        Mean cosine distance (1 - cosine_similarity)
-    """
-    # Handle shape mismatch
-    if projected.dim() == 3:
-        projected = projected.squeeze(1)  # [batch, llm_hidden]
-
-    # Normalize
-    projected = F.normalize(projected, dim=-1)
-    target = F.normalize(target, dim=-1)
-
-    # Cosine similarity
-    cos_sim = (projected * target).sum(dim=-1)
-
-    # Cosine distance (want to minimize)
-    return (1 - cos_sim).mean()
+# MSE Loss for scale-sensitive alignment
+alignment_criterion = nn.MSELoss()
 
 
 def train_stage1(
@@ -145,8 +120,10 @@ def train_stage1(
                 # Get target text embeddings from LLM
                 target_emb = model.get_batch_text_embeddings(descriptions)  # [B, llm_hidden]
 
-                # Compute alignment loss
-                loss = cosine_alignment_loss(projected, target_emb)
+                # Compute alignment loss (MSE)
+                if projected.dim() == 3:
+                    projected = projected.squeeze(1)
+                loss = alignment_criterion(projected, target_emb)
 
             # Backward pass
             scaler.scale(loss).backward()
@@ -270,8 +247,12 @@ def evaluate_alignment(
             projected = model.project_to_llm_space(graph_emb)
             target_emb = model.get_batch_text_embeddings(descriptions)
 
-            # Compute loss
-            loss = cosine_alignment_loss(projected, target_emb)
+            # Compute loss (MSE)
+            if projected.dim() == 3:
+                projected_for_loss = projected.squeeze(1)
+            else:
+                projected_for_loss = projected
+            loss = alignment_criterion(projected_for_loss, target_emb)
 
             # Compute cosine similarity for metrics
             if projected.dim() == 3:
