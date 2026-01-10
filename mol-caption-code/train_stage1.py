@@ -11,7 +11,7 @@ Trains the projector to align GNN graph embeddings with LLM text embeddings.
 Loss: Cosine distance between projected graph embedding and mean-pooled LLM text embedding.
 """
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 import math
 
 import torch

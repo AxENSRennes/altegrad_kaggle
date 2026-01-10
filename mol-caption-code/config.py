@@ -86,6 +86,8 @@ class Config:
     stage2_warmup_steps: int = 100  # reduced proportionally
     eval_every_n_steps: int = 100
     skip_eval_during_training: bool = False  # Skip periodic validation to speed up training
+    compute_train_val: bool = True  # Run validation during training
+    compute_bleu_meteor: bool = True  # Compute BLEU/METEOR metrics (expensive)
 
     # === General Training ===
     max_seq_length: int = 256
@@ -115,6 +117,7 @@ class Config:
             self.stage2_warmup_steps = 20
             self.stage2_grad_accum = 1  # faster iteration for quick test
             self.skip_eval_during_training = True  # skip mid-epoch eval for speed
+            self.compute_bleu_meteor = False  # skip expensive metrics
         elif self.experiment_mode == "medium":
             self.stage1_epochs = 2
             self.stage2_epochs = 2
@@ -122,6 +125,7 @@ class Config:
             self.val_subset = 500
             self.eval_every_n_steps = 100
             self.skip_eval_during_training = True  # skip mid-epoch eval for speed
+            self.compute_bleu_meteor = False  # skip expensive metrics
         elif self.experiment_mode == "full":
             self.stage1_epochs = 3
             self.stage2_epochs = 5
@@ -129,6 +133,7 @@ class Config:
             self.val_subset = None
             self.eval_every_n_steps = 200
             self.skip_eval_during_training = True  # skip mid-epoch eval for speed
+            self.compute_bleu_meteor = False  # skip expensive metrics
         else:
             raise ValueError(f"Unknown experiment mode: {self.experiment_mode}")
 

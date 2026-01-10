@@ -74,16 +74,17 @@ def train_full_pipeline(
         print("\n" + "=" * 60)
         print("STAGE 1: Alignment Training")
         print("=" * 60)
-        stage1_metrics = train_stage1(model, config, logger)
+        stage1_metrics, stage1_final_step = train_stage1(model, config, logger)
         print(f"Stage 1 complete: val_loss={stage1_metrics['val_loss']:.4f}")
     else:
         print("\nSkipping Stage 1 (using existing checkpoint)")
+        stage1_final_step = 0
 
     # Stage 2: SFT
     print("\n" + "=" * 60)
     print("STAGE 2: Supervised Fine-Tuning")
     print("=" * 60)
-    stage2_metrics = train_stage2(model, config, logger, load_stage1=True)
+    stage2_metrics = train_stage2(model, config, logger, load_stage1=True, start_step=stage1_final_step)
     print(f"Stage 2 complete: bleu4={stage2_metrics['bleu4']:.2f}")
 
     # Inference (full mode only)

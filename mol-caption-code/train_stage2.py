@@ -160,8 +160,8 @@ def train_stage2(
 
                 global_step += 1
 
-                # Log to W&B
-                if logger and global_step % config.log_every_n_steps == 0:
+                # Log to W&B (every step)
+                if logger:
                     logger.log({
                         "stage2/loss": accum_loss / accum_steps,
                         "stage2/lr_proj": optimizer.param_groups[0]["lr"],
@@ -184,21 +184,23 @@ def train_stage2(
             })
 
             # Periodic evaluation (can be skipped via config)
-            if (not config.skip_eval_during_training and
+            if (config.compute_train_val and
+                not config.skip_eval_during_training and
                 (batch_idx + 1) % (config.eval_every_n_steps * config.stage2_grad_accum) == 0):
                 val_metrics, samples = evaluate_generation(
                     model, val_loader, device, config, max_samples=50
                 )
-                print(f"\n  [Step {global_step}] val_loss={val_metrics['loss']:.4f}, "
-                      f"bleu4={val_metrics['bleu4']:.2f}, meteor={val_metrics['meteor']:.2f}")
+                bleu_str = f"bleu4={val_metrics['bleu4']:.2f}, " if config.compute_bleu_meteor else ""
+                meteor_str = f"meteor={val_metrics['meteor']:.2f}" if config.compute_bleu_meteor else ""
+                print(f"\n  [Step {global_step}] val_loss={val_metrics['loss']:.4f}, {bleu_str}{meteor_str}")
 
                 if logger:
-                    logger.log({
-                        "eval/loss": val_metrics["loss"],
-                        "eval/bleu4": val_metrics["bleu4"],
-                        "eval/meteor": val_metrics["meteor"],
-                    }, step=global_step)
-                    
+                    log_dict = {"eval/loss": val_metrics["loss"]}
+                    if config.compute_bleu_meteor:
+                        log_dict["eval/bleu4"] = val_metrics["bleu4"]
+                        log_dict["eval/meteor"] = val_metrics["meteor"]
+                    logger.log(log_dict, step=global_step)
+
                     # Log sample table
                     if samples:
                         table_data = []
@@ -217,10 +219,14 @@ def train_stage2(
         # Epoch metrics
         avg_train_loss = epoch_loss / max(num_batches, 1)
 
-        # Full validation
-        val_metrics, samples = evaluate_generation(
-            model, val_loader, device, config, max_samples=200
-        )
+        # Full validation (if enabled)
+        if config.compute_train_val:
+            val_metrics, samples = evaluate_generation(
+                model, val_loader, device, config, max_samples=200
+            )
+        else:
+            val_metrics = {"loss": float("nan"), "bleu4": 0.0, "meteor": 0.0, "token_f1": 0.0}
+            samples = []
 
         # Print epoch summary
         print_epoch_summary(
@@ -232,14 +238,17 @@ def train_stage2(
 
         # Log to W&B (epoch metrics)
         if logger:
-            logger.log({
+            log_dict = {
                 "stage2/epoch": epoch + 1,
                 "stage2/train_loss_epoch": avg_train_loss,
-                "stage2/val_loss": val_metrics["loss"],
-                "stage2/val_bleu4": val_metrics["bleu4"],
-                "stage2/val_meteor": val_metrics["meteor"],
-            }, step=global_step)
-            
+            }
+            if config.compute_train_val:
+                log_dict["stage2/val_loss"] = val_metrics["loss"]
+                if config.compute_bleu_meteor:
+                    log_dict["stage2/val_bleu4"] = val_metrics["bleu4"]
+                    log_dict["stage2/val_meteor"] = val_metrics["meteor"]
+            logger.log(log_dict, step=global_step)
+
             # Log sample table for epoch
             if samples:
                 table_data = [[sm, ref, pred] for pred, ref, sm in samples]
@@ -250,35 +259,50 @@ def train_stage2(
                     step=global_step
                 )
 
-        # Save best model (by BLEU-4)
-        if val_metrics["bleu4"] > best_bleu4:
-            best_bleu4 = val_metrics["bleu4"]
-            bleu_path = config.stage2_checkpoint_path.replace(".pt", "_best_bleu.pt")
-            save_checkpoint(
-                bleu_path,
-                model,
-                optimizer,
-                scheduler,
-                epoch=epoch + 1,
-                metrics=val_metrics,
-                config=config,
-            )
-            print_best_model_saved(bleu_path, "bleu4", best_bleu4)
+        # Save best model (by BLEU-4) - only if computing metrics
+        if config.compute_train_val and config.compute_bleu_meteor:
+            if val_metrics["bleu4"] > best_bleu4:
+                best_bleu4 = val_metrics["bleu4"]
+                bleu_path = config.stage2_checkpoint_path.replace(".pt", "_best_bleu.pt")
+                save_checkpoint(
+                    bleu_path,
+                    model,
+                    optimizer,
+                    scheduler,
+                    epoch=epoch + 1,
+                    metrics=val_metrics,
+                    config=config,
+                )
+                print_best_model_saved(bleu_path, "bleu4", best_bleu4)
 
-        # Save best model (by loss)
-        if val_metrics["loss"] < best_val_loss:
-            best_val_loss = val_metrics["loss"]
-            loss_path = config.stage2_checkpoint_path.replace(".pt", "_best_loss.pt")
-            save_checkpoint(
-                loss_path,
-                model,
-                optimizer,
-                scheduler,
-                epoch=epoch + 1,
-                metrics=val_metrics,
-                config=config,
-            )
-            print(f"  [New Best Loss] {best_val_loss:.4f} - Saved to {loss_path}")
+        # Save best model (by loss) - only if computing validation
+        if config.compute_train_val and not math.isnan(val_metrics["loss"]):
+            if val_metrics["loss"] < best_val_loss:
+                best_val_loss = val_metrics["loss"]
+                loss_path = config.stage2_checkpoint_path.replace(".pt", "_best_loss.pt")
+                save_checkpoint(
+                    loss_path,
+                    model,
+                    optimizer,
+                    scheduler,
+                    epoch=epoch + 1,
+                    metrics=val_metrics,
+                    config=config,
+                )
+                print(f"  [New Best Loss] {best_val_loss:.4f} - Saved to {loss_path}")
+
+        # Save epoch checkpoint
+        epoch_path = config.stage2_checkpoint_path.replace(".pt", f"_ep{epoch + 1}.pt")
+        save_checkpoint(
+            epoch_path,
+            model,
+            optimizer,
+            scheduler,
+            epoch=epoch + 1,
+            metrics=val_metrics,
+            config=config,
+        )
+        print(f"  Epoch {epoch + 1} checkpoint saved to {epoch_path}")
 
         # Always save a 'latest' checkpoint for safety
         latest_path = config.stage2_checkpoint_path.replace(".pt", "_latest.pt")
@@ -380,27 +404,28 @@ def evaluate_generation(
             total_loss += outputs["loss"].item()
             num_batches += 1
 
-        # Generate captions
-        try:
-            predictions = model.generate(
-                graphs=graphs,
-                smiles_list=smiles,
-                max_new_tokens=128,
-                num_beams=1,
-                do_sample=False,
-            )
-        except Exception as e:
-            print(f"Generation error: {e}")
-            predictions = ["" for _ in descriptions]
+        # Generate captions (only if computing BLEU/METEOR)
+        if config.compute_bleu_meteor:
+            try:
+                predictions = model.generate(
+                    graphs=graphs,
+                    smiles_list=smiles,
+                    max_new_tokens=128,
+                    num_beams=1,
+                    do_sample=False,
+                )
+            except Exception as e:
+                print(f"Generation error: {e}")
+                predictions = ["" for _ in descriptions]
 
-        all_predictions.extend(predictions)
-        all_references.extend(descriptions)
-        
-        # Zip with SMILES for the table
-        for p, r, s in zip(predictions, descriptions, smiles):
-            if len(all_predictions) <= max_samples:
-                all_samples.append((p, r, s))
-        
+            all_predictions.extend(predictions)
+            all_references.extend(descriptions)
+
+            # Zip with SMILES for the table
+            for p, r, s in zip(predictions, descriptions, smiles):
+                if len(all_predictions) <= max_samples:
+                    all_samples.append((p, r, s))
+
         num_samples += len(descriptions)
 
     # Compute metrics
@@ -408,9 +433,15 @@ def evaluate_generation(
         "loss": total_loss / max(num_batches, 1),
     }
 
-    if all_predictions and all_references:
+    # Compute BLEU/METEOR only if enabled
+    if config.compute_bleu_meteor and all_predictions and all_references:
         text_metrics = compute_metrics(all_predictions, all_references)
         metrics.update(text_metrics)
+    else:
+        # Provide placeholder metrics when not computing
+        metrics["bleu4"] = 0.0
+        metrics["meteor"] = 0.0
+        metrics["token_f1"] = 0.0
 
     # Sample outputs
     samples = all_samples[:10]
