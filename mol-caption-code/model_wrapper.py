@@ -22,6 +22,7 @@ from torch_geometric.data import Batch
 
 from model_gnn import MolGNN
 from model_projector import SolidBridgeProjector
+from metadata import TXT_MEAN_V1
 
 
 class MolCaptionModel(nn.Module):
@@ -141,14 +142,12 @@ class MolCaptionModel(nn.Module):
 
         # 6. Load txt_mean for centering
         self.txt_mean = None
-        if config.center_embeddings and os.path.exists(config.txt_mean_path):
-            print(f"Loading txt_mean from {config.txt_mean_path}")
-            self.txt_mean = torch.load(config.txt_mean_path, map_location=device)
+        if config.center_embeddings:
+            # Load from embedded metadata
+            self.txt_mean = torch.tensor(TXT_MEAN_V1, device=device)
             # Ensure correct dtype (float16 if using quantization/amp)
             if use_quantization:
                 self.txt_mean = self.txt_mean.half()
-        elif config.center_embeddings:
-            print(f"Warning: center_embeddings=True but {config.txt_mean_path} not found.")
 
     def process_gnn_embeddings(self, g: torch.Tensor) -> torch.Tensor:
         """
