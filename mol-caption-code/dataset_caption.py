@@ -17,7 +17,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader, Subset
 from torch_geometric.data import Batch
 
-from config import PROMPT_TEMPLATE
+from config import SYSTEM_PROMPT, USER_PROMPT_FORMAT
 from utils import graph_to_smiles
 
 
@@ -134,8 +134,21 @@ def collate_caption_batch(
     # Get SMILES for each graph
     smiles_list = [graph_to_smiles(g) for g in graphs]
 
-    # Build prompts
-    prompts = [PROMPT_TEMPLATE.format(smiles=s) for s in smiles_list]
+    # Build prompts using tokenizer.apply_chat_template
+    prompts = []
+    for s in smiles_list:
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": USER_PROMPT_FORMAT.format(smiles=s)}
+        ]
+        # Use enable_thinking=False to strictly disable reasoning and add empty <think> tags
+        p = tokenizer.apply_chat_template(
+            messages, 
+            tokenize=False, 
+            add_generation_prompt=True,
+            enable_thinking=False
+        )
+        prompts.append(p)
 
     # Build full sequences (prompt + description + eos)
     if include_labels:

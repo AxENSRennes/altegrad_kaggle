@@ -1,34 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Stage 2: Supervised Fine-Tuning (SFT)
-
-Trains both the projector and LoRA adapters on caption generation.
-- GNN is frozen
-- Projector is trained (continues from Stage 1)
-- LLM LoRA adapters are trained
-
-Loss: Cross-entropy on generated tokens (standard language modeling loss).
-"""
-
-from typing import Dict, Optional, List, Tuple
-import math
+import os
+# CRITICAL: This MUST be set before any other imports
+os.environ["NPY_DISABLE_ARRAY_API"] = "1"
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import math
+from typing import Dict, List, Tuple, Optional, Any
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from config import Config
 from model_wrapper import MolCaptionModel
 from dataset_caption import prepare_dataloaders
-from metrics import compute_metrics
 from utils import (
-    save_checkpoint, 
-    load_checkpoint, 
-    WandBLogger, 
-    graph_to_smiles, 
-    get_grad_norm
+    load_checkpoint,
+    save_checkpoint,
+    WandBLogger,
+    graph_to_smiles,
+    get_grad_norm,
 )
 from report import (
     print_progress_header,
@@ -36,6 +28,7 @@ from report import (
     print_epoch_summary,
     print_best_model_saved,
 )
+from metrics import compute_metrics
 
 
 def train_stage2(

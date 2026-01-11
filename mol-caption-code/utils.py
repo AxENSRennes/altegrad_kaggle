@@ -1,25 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Utility functions for molecular captioning.
-
-Includes:
-- SMILES reconstruction from graph features
-- L2 normalization
-- Checkpoint save/load
-- W&B logging helpers
-"""
-
 import os
-import random
-from typing import Dict, Any, Optional
-
-# Fix for RDKit/NumPy compatibility issue: AttributeError: _ARRAY_API not found
+# CRITICAL: This MUST be set before any other imports
 os.environ["NPY_DISABLE_ARRAY_API"] = "1"
 
+import random
 import torch
 import torch.nn as nn
 import numpy as np
+from typing import Dict, Any, Optional
 
 
 def set_seed(seed: int):
@@ -45,109 +34,9 @@ def l2norm(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
 
 def graph_to_smiles(graph) -> str:
-    """
-    Reconstruct SMILES from PyG graph using RDKit.
-
-    The graph features follow the encoding from data_utils.py:
-    - x[:, 0]: atomic_num (0-118)
-    - x[:, 3]: formal_charge (index in range(-5, 7), so subtract 5 to get actual charge)
-    - edge_attr[:, 0]: bond_type index
-
-    Args:
-        graph: PyTorch Geometric Data object
-
-    Returns:
-        SMILES string or empty string if reconstruction fails
-    """
-    try:
-        try:
-            from rdkit import Chem
-            from rdkit.Chem import RWMol
-        except AttributeError as e:
-            if "_ARRAY_API" in str(e):
-                return "SMILES_UNAVAILABLE (RDKit/NumPy Conflict)"
-            raise e
-    except ImportError as e:
-        raise ImportError(
-            "RDKit is required for SMILES reconstruction. "
-            "Install it with: pip install rdkit"
-        ) from e
-
-    try:
-        mol = RWMol()
-
-        # Bond type mapping (from data_utils.py e_map)
-        BOND_TYPES = {
-            0: Chem.BondType.UNSPECIFIED,
-            1: Chem.BondType.SINGLE,
-            2: Chem.BondType.DOUBLE,
-            3: Chem.BondType.TRIPLE,
-            4: Chem.BondType.QUADRUPLE,
-            5: Chem.BondType.QUINTUPLE,
-            6: Chem.BondType.HEXTUPLE,
-            7: Chem.BondType.ONEANDAHALF,
-            8: Chem.BondType.TWOANDAHALF,
-            9: Chem.BondType.THREEANDAHALF,
-            10: Chem.BondType.FOURANDAHALF,
-            11: Chem.BondType.FIVEANDAHALF,
-            12: Chem.BondType.AROMATIC,
-            13: Chem.BondType.IONIC,
-            14: Chem.BondType.HYDROGEN,
-            15: Chem.BondType.THREECENTER,
-            16: Chem.BondType.DATIVEONE,
-            17: Chem.BondType.DATIVE,
-            18: Chem.BondType.DATIVEL,
-            19: Chem.BondType.DATIVER,
-            20: Chem.BondType.OTHER,
-            21: Chem.BondType.ZERO,
-        }
-
-        # Add atoms
-        # x[:, 0] = atomic_num, x[:, 3] = formal_charge (offset by 5)
-        for i in range(graph.x.size(0)):
-            atomic_num = int(graph.x[i, 0].item())
-            if atomic_num == 0:
-                atomic_num = 6  # Default to carbon
-            atom = Chem.Atom(atomic_num)
-
-            # Formal charge: index 3, stored as value + 5 (range -5 to +6)
-            if graph.x.size(1) > 3:
-                formal_charge = int(graph.x[i, 3].item()) - 5
-                atom.SetFormalCharge(formal_charge)
-
-            mol.AddAtom(atom)
-
-        # Add bonds (deduplicate bidirectional edges)
-        added_bonds = set()
-        if graph.edge_index is not None and graph.edge_index.numel() > 0:
-            for j in range(graph.edge_index.size(1)):
-                src = int(graph.edge_index[0, j].item())
-                dst = int(graph.edge_index[1, j].item())
-
-                # Skip self-loops and duplicate edges
-                if src == dst:
-                    continue
-                bond_key = (min(src, dst), max(src, dst))
-                if bond_key in added_bonds:
-                    continue
-                added_bonds.add(bond_key)
-
-                # Get bond type
-                if graph.edge_attr is not None and graph.edge_attr.numel() > 0:
-                    bond_type_idx = int(graph.edge_attr[j, 0].item())
-                    bond_type = BOND_TYPES.get(bond_type_idx, Chem.BondType.SINGLE)
-                else:
-                    bond_type = Chem.BondType.SINGLE
-
-                mol.AddBond(src, dst, bond_type)
-
-        # Convert to SMILES
-        mol = mol.GetMol()
-        smiles = Chem.MolToSmiles(mol)
-        return smiles if smiles else ""
-
-    except Exception:
-        return ""
+    """Proxy for rdkit_utils.graph_to_smiles for backward compatibility."""
+    from rdkit_utils import graph_to_smiles as g2s
+    return g2s(graph)
 
 
 def save_checkpoint(

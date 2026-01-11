@@ -1,21 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Main entry point for molecular captioning training and inference.
-
-Usage:
-    # Quick test (~5 min)
-    python run.py --mode quick
-
-    # Medium test (~1 hour)
-    python run.py --mode medium
-
-    # Full training (~9 hours)
-    python run.py --mode full
-
-    # Inference only
-    python run.py --inference --checkpoint outputs/stage2_best.pt
-"""
+import os
+# CRITICAL: This MUST be set before any other imports
+os.environ["NPY_DISABLE_ARRAY_API"] = "1"
 
 import argparse
 import torch

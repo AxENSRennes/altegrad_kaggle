@@ -164,13 +164,9 @@ class Config:
         return os.path.join(self.output_dir, f"submission_{self.experiment_mode}.csv")
 
 
-# Prompt template for caption generation (Qwen3 chat format)
-PROMPT_TEMPLATE = """<|im_start|>user
-Molecule Structure: <|graph|>
-SMILES: {smiles}
-Task: Describe the molecule's chemical properties and functional groups.<|im_end|>
-<|im_start|>assistant
-"""
+# Prompt components for caption generation (using tokenizer.apply_chat_template)
+SYSTEM_PROMPT = "/no_think\nYou are an expert chemist. Describe the molecule's chemical properties and functional groups concisely."
+USER_PROMPT_FORMAT = "Molecule Structure: <|graph|>\nSMILES: {smiles}"
 
 
 def get_config(mode: str = "quick", **kwargs) -> Config:

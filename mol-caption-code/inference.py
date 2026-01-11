@@ -1,19 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Inference: Generate captions for test set and create submission.
+import os
+# CRITICAL: This MUST be set before any other imports
+os.environ["NPY_DISABLE_ARRAY_API"] = "1"
 
-Loads the best Stage 2 checkpoint and generates captions for all test molecules.
-Outputs a CSV file in the format: ID,description
-"""
-
-import pickle
 import csv
+import pickle
 from typing import List, Optional
-from pathlib import Path
-
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset, DataLoader
 from torch_geometric.data import Batch
 from tqdm import tqdm
 
@@ -22,7 +17,7 @@ from model_wrapper import MolCaptionModel, create_model
 from utils import load_checkpoint, graph_to_smiles, ensure_dir
 
 
-class TestDataset:
+class TestDataset(Dataset):
     """Simple dataset for test graphs."""
 
     def __init__(self, graph_path: str):

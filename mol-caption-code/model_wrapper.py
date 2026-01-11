@@ -366,13 +366,26 @@ class MolCaptionModel(nn.Module):
         Returns:
             List of generated caption strings
         """
-        from config import PROMPT_TEMPLATE
+        from config import SYSTEM_PROMPT, USER_PROMPT_FORMAT
 
         self.eval()
         batch_size = len(smiles_list)
 
-        # Build prompts
-        prompts = [PROMPT_TEMPLATE.format(smiles=s) for s in smiles_list]
+        # Build prompts using tokenizer.apply_chat_template
+        prompts = []
+        for s in smiles_list:
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": USER_PROMPT_FORMAT.format(smiles=s)}
+            ]
+            # Use enable_thinking=False to strictly disable reasoning and add empty <think> tags
+            p = self.tokenizer.apply_chat_template(
+                messages, 
+                tokenize=False, 
+                add_generation_prompt=True,
+                enable_thinking=False
+            )
+            prompts.append(p)
 
         # Tokenize prompts
         inputs = self.tokenizer(

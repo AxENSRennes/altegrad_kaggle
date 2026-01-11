@@ -1,22 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Stage 1: Alignment Training
-
-Trains the projector to align GNN graph embeddings with LLM text embeddings.
-- GNN is frozen
-- LLM is frozen
-- Only the projector is trained
-
-Loss: Cosine distance between projected graph embedding and mean-pooled LLM text embedding.
-"""
-
-from typing import Dict, Optional, Tuple
-import math
+import os
+# CRITICAL: This MUST be set before any other imports
+os.environ["NPY_DISABLE_ARRAY_API"] = "1"
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
+from typing import Dict, Tuple, Optional, Any
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
