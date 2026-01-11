@@ -144,15 +144,36 @@ class Config:
 
     @property
     def train_graphs_path(self) -> str:
-        return os.path.join(self.data_dir, "train_graphs.pkl")
+        """Return train graphs path, checking data_dir first, then hf_checkpoints."""
+        local_path = os.path.join(self.data_dir, "train_graphs.pkl")
+        if os.path.exists(local_path):
+            return local_path
+        return os.path.join(self.hf_checkpoints_dir, "data", "train_graphs.pkl")
 
     @property
     def val_graphs_path(self) -> str:
-        return os.path.join(self.data_dir, "validation_graphs.pkl")
+        """Return validation graphs path, checking data_dir first, then hf_checkpoints."""
+        local_path = os.path.join(self.data_dir, "validation_graphs.pkl")
+        if os.path.exists(local_path):
+            return local_path
+        return os.path.join(self.hf_checkpoints_dir, "data", "validation_graphs.pkl")
 
     @property
     def test_graphs_path(self) -> str:
-        return os.path.join(self.data_dir, "test_graphs.pkl")
+        """Return test graphs path, checking data_dir first, then hf_checkpoints."""
+        local_path = os.path.join(self.data_dir, "test_graphs.pkl")
+        if os.path.exists(local_path):
+            return local_path
+        return os.path.join(self.hf_checkpoints_dir, "data", "test_graphs.pkl")
+
+    @property
+    def gnn_checkpoint_path(self) -> str:
+        """Return GNN checkpoint path, checking local first, then hf_checkpoints."""
+        if os.path.exists(self.gnn_checkpoint):
+            return self.gnn_checkpoint
+        # Try hf_checkpoints with just the filename
+        filename = os.path.basename(self.gnn_checkpoint)
+        return os.path.join(self.hf_checkpoints_dir, filename)
 
     @property
     def stage1_checkpoint_path(self) -> str:

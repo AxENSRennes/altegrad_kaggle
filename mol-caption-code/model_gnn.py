@@ -252,34 +252,18 @@ def load_gnn_checkpoint(config, device: str = "cpu") -> MolGNN:
     """
     Load a pre-trained MolGNN from checkpoint.
 
-    If checkpoint is not found locally, attempts to download from HF Hub.
+    Uses config.gnn_checkpoint_path which checks local first, then hf_checkpoints.
 
     Args:
-        config: Config object with data_dir, gnn_checkpoint, gnn_hidden, gnn_layers
+        config: Config object with gnn_checkpoint_path, train_graphs_path, gnn_hidden, gnn_layers
         device: Device to load model to
 
     Returns:
         Loaded MolGNN model
     """
-    from pathlib import Path
-
-    checkpoint_path = Path(config.gnn_checkpoint)
-
-    # Download from HF Hub if not found locally
-    if not checkpoint_path.exists():
-        try:
-            import sys
-            sys.path.insert(0, str(checkpoint_path.parent.parent))
-            from hf_checkpoint import download_checkpoint
-            print(f"Checkpoint not found locally, downloading from HF Hub...")
-            download_checkpoint(
-                filename=checkpoint_path.name,
-                local_dir=str(checkpoint_path.parent),
-            )
-        except Exception as e:
-            raise FileNotFoundError(
-                f"Checkpoint {config.gnn_checkpoint} not found locally and failed to download from HF Hub: {e}"
-            )
+    # Use the property that checks local first, then hf_checkpoints
+    checkpoint_path = config.gnn_checkpoint_path
+    print(f"Loading GNN checkpoint from: {checkpoint_path}")
 
     # Infer cardinalities from training graphs
     atom_card, edge_card = infer_cardinalities_from_graphs(config.train_graphs_path)
@@ -294,7 +278,7 @@ def load_gnn_checkpoint(config, device: str = "cpu") -> MolGNN:
     )
 
     # Load checkpoint
-    checkpoint = torch.load(config.gnn_checkpoint, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device)
     gnn.load_state_dict(checkpoint["state_dict"], strict=False)
 
     return gnn.to(device)

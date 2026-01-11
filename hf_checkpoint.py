@@ -24,18 +24,20 @@ def upload_checkpoint(
     local_path: str,
     repo_id: str = DEFAULT_REPO,
     path_in_repo: str = None,
+    keep_path: bool = False,
 ):
     """Upload a checkpoint to HF Hub.
 
     Args:
         local_path: Path to local checkpoint file
         repo_id: HF Hub repository ID (e.g., "username/repo-name")
-        path_in_repo: Filename in the repo (defaults to local filename)
+        path_in_repo: Filename in the repo (defaults to local path or filename)
+        keep_path: If True, preserve directory structure (e.g., data/file.pkl)
     """
     api = get_api()
     local_path = Path(local_path)
     if path_in_repo is None:
-        path_in_repo = local_path.name
+        path_in_repo = str(local_path) if keep_path else local_path.name
 
     api.upload_file(
         path_or_fileobj=str(local_path),
@@ -99,12 +101,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "--local-dir", "-d", default=".", help="Local directory for downloads"
     )
+    parser.add_argument(
+        "--keep-path", "-k", action="store_true",
+        help="Preserve directory structure in repo (e.g., data/file.pkl)"
+    )
     args = parser.parse_args()
 
     if args.action == "upload":
         if not args.file:
             parser.error("upload requires --file")
-        upload_checkpoint(args.file, args.repo)
+        upload_checkpoint(args.file, args.repo, keep_path=args.keep_path)
     elif args.action == "download":
         if not args.file:
             parser.error("download requires --file")
