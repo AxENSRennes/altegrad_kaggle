@@ -1,0 +1,3 @@
+[submodule "hf_checkpoints"]
+	path = hf_checkpoints
+	url = https://huggingface.co/Moinada/altegrad-mol-caption

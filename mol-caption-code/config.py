@@ -53,6 +53,9 @@ class Config:
         else "outputs"
     ))
 
+    # HF checkpoints folder (for shared/versioned checkpoints)
+    hf_checkpoints_dir: str = "hf_checkpoints"
+
     # === Model Configuration ===
     llm_name: str = "Qwen/Qwen3-0.6B"
     gnn_hidden: int = 512
@@ -153,7 +156,14 @@ class Config:
 
     @property
     def stage1_checkpoint_path(self) -> str:
-        return os.path.join(self.output_dir, f"stage1_{self.experiment_mode}_best.pt")
+        """Return Stage 1 checkpoint path, checking outputs first, then hf_checkpoints."""
+        # Priority 1: Local outputs folder (fresh training)
+        local_path = os.path.join(self.output_dir, f"stage1_{self.experiment_mode}_best.pt")
+        if os.path.exists(local_path):
+            return local_path
+
+        # Priority 2: HF checkpoints folder (shared/versioned)
+        return os.path.join(self.hf_checkpoints_dir, f"stage1_{self.experiment_mode}_best.pt")
 
     @property
     def stage2_checkpoint_path(self) -> str:

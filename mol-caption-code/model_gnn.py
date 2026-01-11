@@ -252,6 +252,8 @@ def load_gnn_checkpoint(config, device: str = "cpu") -> MolGNN:
     """
     Load a pre-trained MolGNN from checkpoint.
 
+    If checkpoint is not found locally, attempts to download from HF Hub.
+
     Args:
         config: Config object with data_dir, gnn_checkpoint, gnn_hidden, gnn_layers
         device: Device to load model to
@@ -259,6 +261,26 @@ def load_gnn_checkpoint(config, device: str = "cpu") -> MolGNN:
     Returns:
         Loaded MolGNN model
     """
+    from pathlib import Path
+
+    checkpoint_path = Path(config.gnn_checkpoint)
+
+    # Download from HF Hub if not found locally
+    if not checkpoint_path.exists():
+        try:
+            import sys
+            sys.path.insert(0, str(checkpoint_path.parent.parent))
+            from hf_checkpoint import download_checkpoint
+            print(f"Checkpoint not found locally, downloading from HF Hub...")
+            download_checkpoint(
+                filename=checkpoint_path.name,
+                local_dir=str(checkpoint_path.parent),
+            )
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Checkpoint {config.gnn_checkpoint} not found locally and failed to download from HF Hub: {e}"
+            )
+
     # Infer cardinalities from training graphs
     atom_card, edge_card = infer_cardinalities_from_graphs(config.train_graphs_path)
 

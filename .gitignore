@@ -1,2 +1,25 @@
 venv/
 __pycache__/
+.env
+
+# Local training outputs (not versioned)
+outputs/*.pt
+checkpoints/*.pt
+
+# Data files (too large for git)
+data/*.pkl
+data/*.csv
+
+# HF cache
+.cache/huggingface/
+
+# Test/debug scripts
+test_*.py
+debug_*.py
+verify_*.py
+
+# Submissions (keep only final ones)
+outputs/submission_*.csv
+
+# Notebook with secrets
+gen_caption_notebook.ipynb
