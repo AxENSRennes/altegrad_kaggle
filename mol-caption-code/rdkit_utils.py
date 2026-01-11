@@ -44,29 +44,27 @@ def _is_rdkit_viable():
         return False
 
 def _get_rdkit():
-    """Lazily and safely load RDKit using the pre-flight check."""
+    """Lazily load RDKit, skipping subprocess check since it gives false negatives."""
     global _RDKIT_AVAILABLE, _Chem, _RWMol
-    
+
     if _RDKIT_AVAILABLE is not None:
         return _RDKIT_AVAILABLE, _Chem, _RWMol
-    
+
     if os.environ.get("DISABLE_RDKIT", "0") == "1":
         _RDKIT_AVAILABLE = False
         return False, None, None
 
-    # Isolated check to see if it catches fire
-    if _is_rdkit_viable():
-        try:
-            from rdkit import Chem
-            from rdkit.Chem import RWMol
-            _Chem = Chem
-            _RWMol = RWMol
-            _RDKIT_AVAILABLE = True
-        except Exception:
-            _RDKIT_AVAILABLE = False
-    else:
+    # Direct import - the env var NPY_DISABLE_ARRAY_API is already set at module level
+    # Skip subprocess check as it gives false negatives due to NumPy warnings on stderr
+    try:
+        from rdkit import Chem
+        from rdkit.Chem import RWMol
+        _Chem = Chem
+        _RWMol = RWMol
+        _RDKIT_AVAILABLE = True
+    except Exception:
         _RDKIT_AVAILABLE = False
-        
+
     return _RDKIT_AVAILABLE, _Chem, _RWMol
 
 def graph_to_smiles(graph) -> str:
