@@ -81,8 +81,8 @@ class Config:
     stage1_warmup_steps: int = 100
 
     # === Stage 2: SFT Training ===
-    stage2_batch_size: int = 8
-    stage2_grad_accum: int = 2  # effective batch = 16 (better for SFT)
+    stage2_batch_size: int = 16
+    stage2_grad_accum: int = 4  # effective batch = 64
     stage2_lr_proj: float = 1e-4  # reduced from 5e-4
     stage2_lr_lora: float = 1e-5  # reduced from 2e-4 (prevents forgetting)
     stage2_epochs: int = 2  # reduced from 5 (SFT overfits quickly)
