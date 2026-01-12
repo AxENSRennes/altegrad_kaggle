@@ -146,6 +146,11 @@ def train_stage2(
                     list(model.projector.parameters()) + lora_params,
                     config.grad_clip_norm
                 )
+
+                # Capture gradient norms BEFORE zero_grad clears them
+                grad_norm_proj = get_grad_norm(model.projector)
+                grad_norm_lora = get_grad_norm(model.llm)
+
                 scaler.step(optimizer)
                 scaler.update()
                 scheduler.step()
@@ -159,8 +164,8 @@ def train_stage2(
                         "stage2/loss": accum_loss / accum_steps,
                         "stage2/lr_proj": optimizer.param_groups[0]["lr"],
                         "stage2/lr_lora": optimizer.param_groups[1]["lr"],
-                        "stage2/grad_norm_proj": get_grad_norm(model.projector),
-                        "stage2/grad_norm_lora": get_grad_norm(model.llm),
+                        "stage2/grad_norm_proj": grad_norm_proj,
+                        "stage2/grad_norm_lora": grad_norm_lora,
                     }, step=global_step)
 
                 accum_loss = 0.0
