@@ -1,0 +1,404 @@
+\documentclass[sigconf,nonacm]{acmart}
+
+%% -------------------------------------------------
+%% META-DATA (ACM disabled)
+%% -------------------------------------------------
+\setcopyright{none}
+\acmYear{2026}
+\acmDOI{}
+\acmISBN{}
+
+%% -------------------------------------------------
+%% PACKAGES
+%% -------------------------------------------------
+\usepackage[ruled,vlined]{algorithm2e}
+\usepackage{algorithmic}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{float}
+
+%% -------------------------------------------------
+%% TITLE & AUTHORS
+%% -------------------------------------------------
+\title[Graph-to-Text for Molecules]{Molecular Graph Captioning: Learning to Translate Molecular Graphs into Natural Language\\[0.3em]
+\large ALTEGRAD Data Challenge - Molecular Graph Captioning\\
+\large Project Report - January 2026}
+
+\author{Gabriel Mariadass}
+
+\author{Author}
+
+\author{Author}
+
+%% -------------------------------------------------
+%% BEGIN DOCUMENT
+%% -------------------------------------------------
+\begin{document}
+
+\maketitle
+\vspace{-0.3em}
+
+\section{Introduction}
+\label{sec:intro}
+
+Molecular graph captioning aims at translating the atomic structure of a molecule,
+represented as a graph, into a coherent and human-readable natural language
+description. This task lies at the intersection of graph representation learning and
+natural language processing, and is particularly challenging due to the complex and
+structured nature of molecular graphs, as well as the variability of textual
+descriptions.
+
+\medskip
+
+In this project, we address the Molecular Graph Captioning challenge proposed in
+ALTEGRAD. We explore a graph-to-text pipeline that combines a graph neural network
+encoder with a retrieval mechanism. We focus on how molecular
+graphs are represented, how graph and text embeddings are learned jointly, and how
+predictions are produced at inference time. We report experimental results on the
+provided dataset and discuss the strengths and limitations of our approach.
+
+\section{Data}
+\label{sec:data}
+
+\subsection{Dataset Overview}
+
+The dataset used in the ALTEGRAD Molecular Graph Captioning challenge contains
+approximately 33,000 molecules represented as graphs, with natural-language
+descriptions provided for the training and validation sets. The training set includes
+31,008 molecules, the validation set 1,000 molecules, and the test set 1,000 molecules
+whose descriptions are hidden for Kaggle evaluation.
+Predictions are evaluated using a public and a private leaderboard, where only a
+subset of test molecules is scored immediately, while the remaining ones are used to
+compute the final score after the competition ends. All data are provided as pickle
+files containing PyTorch Geometric Data objects, with one object per molecule.
+
+\medskip
+
+We first used the provided script inspect\_graph\_data.py to perform an initial inspection
+of the dataset and verify the structure of the graph objects. We then added an
+additional script, \\
+inspect\_graph\_data\_2.py, to further analyze the distributions of graph
+sizes and caption lengths. Statistics and visualizations are provided in
+Appendix~\ref{app:data_analysis}.
+
+\subsection{Graph Structure}
+
+Each molecule is represented as a graph where nodes correspond to atoms and edges
+correspond to chemical bonds. The size of the graphs varies significantly across the
+dataset. In the training set, the number of atoms ranges from 1 to 574, with an average
+of about 32 atoms per molecule, while the number of bonds ranges from 0 to 1,284,
+with an average of around 67 bonds.
+
+The distributions of graph sizes are not uniform and show a peak for small
+molecules, with a long tail corresponding to larger and more complex structures. This
+means that most molecules are relatively small, while a limited number of graphs are
+much larger, which can affect training stability. The validation and test sets show similar statistics, indicating that all splits have
+comparable graph size distributions.
+
+\subsection{Caption Statistics}
+
+Text descriptions also show significant variability in length. Based on the training
+set, captions range from 18 to 166 words, with an average length of about 43 words.
+In terms of characters, descriptions range from 95 to 1,377 characters, with an
+average of approximately 294 characters.
+This variability reflects differences in level of annotation,
+and makes the generation task more challenging, as the model must handle both short
+and long descriptions. 
+
+\subsection{Node Features}
+
+Each atom is described by a feature vector of size 9. These features are stored as
+categorical integer values rather than one-hot vectors. They describe basic chemical
+properties of atoms, including the atomic number, chirality, atom degree, formal
+charge, number of attached hydrogens, number of radical electrons, hybridization
+state, aromaticity, and whether the atom belongs to a ring.
+In our models, these categorical features are converted into
+continuous embeddings before being processed by the graph neural network.
+
+\subsection{Edge Features}
+
+Chemical bonds are represented by two tensors. The first one describes the graph
+connectivity and lists the pairs of atoms that are connected. Each undirected bond is
+represented by two directed edges, one in each direction.
+The second tensor contains edge features. Each bond is described by three categorical
+features: the bond type, the bond stereochemistry, and whether the bond is conjugated.
+These features provide additional chemical information that is used by the graph
+encoder.
+
+\newpage
+
+\section{Method}
+\label{sec:method}
+
+In this work, we primarily follow the first methodological direction suggested in the challenge description, namely the enhancement of retrieval-based approaches for molecular graph captioning. Rather than directly generating textual descriptions, our goal is to retrieve, from the training corpus, the most relevant natural-language caption given a molecular graph.
+
+\medskip
+
+Our approach adopts a retrieval-based paradigm in which molecular graphs and textual descriptions are embedded into a shared representation space. The overall pipeline is composed of three main stages: (1) text embedding using a retrieval-optimized language model, (2) contrastive learning of a molecular graph encoder to align graph and text representations, and (3) a two-stage inference procedure combining fast nearest-neighbor retrieval with neural reranking. An overview of the pipeline is illustrated in Figure~\ref{fig:pipeline}. 
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figs/pipeline.png}
+    \caption{Overview of the proposed molecular graph captioning pipeline.}
+    \label{fig:pipeline}
+\end{figure}
+
+\medskip
+
+From an implementation perspective, our approach is derived from the provided baseline and is obtained by modifying three core scripts. First, the script \\
+generate\_description\_embedding.py was reworked to improve the quality of text representations used for retrieval. Second, train\_gcn.py was significantly modified to implement a stronger graph encoder trained with a contrastive objective, enabling a better alignment between molecular graph embeddings and text embeddings. Finally, retrieval\_answer.py was adapted to perform a two-stage inference procedure, combining fast embedding-based retrieval with a neural reranking step for more accurate caption selection.
+
+\medskip
+
+The second direction proposed in the challenge, which consists in building a fully generative graph-to-text model, was also investigated. However, due to computational constraints and performance considerations, this line of work was not retained but is discussed in Section~\ref{sec:discussion}.
+
+\subsection{Text Representation with Contrastive Language Models (generate\_description\_embedding.py)}
+
+In the baseline implementation (v0), molecular descriptions were encoded using a standard BERT model, where the final representation was obtained from the special \texttt{[CLS]} token of the last hidden layer. While this approach provides a generic semantic representation, it is not explicitly optimized
+for similarity-based retrieval, and models trained with objectives tailored to semantic
+similarity often produce embeddings that yield higher cosine
+similarity performance than standard BERT representations \cite{reimers2019sentence}.
+
+\medskip
+
+In our approach, we replace this text encoder with the pre-trained model \texttt{intfloat/e5-base-v2}, which is specifically trained using contrastive objectives for dense retrieval. Contrastive language models have been shown to produce embedding spaces that are better structured for nearest-neighbor retrieval and semantic similarity tasks, with stronger performance on retrieval benchmarks compared to vanilla BERT embeddings \cite{e5_contrastive}. This makes such models particularly well-suited for retrieval-based captioning tasks.
+
+\medskip
+
+Each molecular description is first prepended with the prefix ``passage: '', following recommended input formatting for E5-style models \cite{e5_model_card}, and then tokenized with a maximum sequence length of 256 tokens. Instead of relying on a single token representation, we aggregate token-level outputs using mean pooling over the last hidden layer, weighted by the attention mask. The resulting vector is then $\ell_2$-normalized, yielding a fixed-dimensional embedding that captures the global semantic content of the description. These text embeddings are precomputed for the training and validation sets and kept fixed during the training of the graph neural network. 
+
+\subsection{Molecular Graph Encoder and Choice of GINE Architecture (train\_gcn.py)}
+
+In the baseline implementation (v0), molecular graphs were encoded using a simple graph convolutional network in which all nodes were initialized with the same learnable vector, and neither atom-level nor bond-level features were explicitly exploited. While this approach allowed message passing over the molecular topology, it failed to leverage the rich chemical information available in the dataset and resulted in limited representational capacity.
+
+\medskip
+
+In contrast, our approach relies on a Graph Isomorphism Network with Edge features (GINE)
+as the molecular graph encoder \cite{hu2020strategies}. This architecture is well suited
+to the chemical domain, as chemical bonds carry rich semantic information beyond
+connectivity, such as bond order and stereochemistry, which strongly influence molecular
+properties \cite{gilmer2017mpnn}. By explicitly incorporating edge attributes into
+message passing, GINE enables node representations to reflect both atomic and bond-level
+information.
+
+\medskip
+
+As described in Section~\ref{sec:data}, the categorical atom- and bond-level features
+are converted into continuous embeddings before being processed by the graph neural
+network. These embeddings are incorporated into the message-passing layers of a
+GINE-based encoder, which explicitly accounts for edge attributes during node updates
+\cite{hu2020strategies}.
+
+\medskip
+
+The encoder consists of multiple stacked GINE convolutional layers with residual connections and layer normalization. This architecture improves both expressiveness and training stability, and allows the model to capture higher-order chemical interactions through deep message passing. After message propagation, node-level representations are aggregated into a graph-level embedding using an attention-based pooling mechanism \cite{lee2019attention}. This pooling strategy learns to assign higher weights to chemically informative atoms, such as functional groups or reactive sites, rather than treating all atoms uniformly.
+
+\medskip
+
+Finally, a projection head maps the pooled graph representation into the same embedding space as the text encoder, and the resulting graph embeddings are $\ell_2$-normalized. This alignment ensures that cosine similarity can be used consistently during contrastive training and retrieval. Overall, the use of a GINE-based encoder enables the model to capture both the structural and chemical semantics of molecules, which is essential for accurate alignment with natural-language descriptions.
+
+\subsection{Contrastive Training Objective (train\_gcn.py)}
+\label{subsec:CTO}
+
+In the baseline implementation (v0), the alignment between molecular graph representations
+and text representations was learned using a mean squared error loss. While simple to implement, this objective treats the embedding space in a purely
+regression-based manner and does not explicitly enforce relative discrimination between
+matched and mismatched graph-text pairs, a limitation that has been shown to be
+suboptimal for similarity-based retrieval tasks \cite{reimers2019sentence}.
+In our approach, we replace this objective with a CLIP-style contrastive loss, which is
+explicitly designed to learn embeddings suitable for similarity-based retrieval
+\cite{radford2021clip}.
+
+\medskip
+
+Given a batch of $B$ molecular graph embeddings $\{g_i\}_{i=1}^B$ and their corresponding
+text embeddings $\{t_i\}_{i=1}^B$, the model maximizes similarity between matched
+graph--text pairs while minimizing similarity to mismatched ones. To strengthen the
+contrastive signal without increasing the batch size, a memory queue $\mathcal{Q}$ of
+text embeddings from previous batches is used as a large set of additional negatives
+\cite{he2020moco}.
+
+\medskip
+
+Formally, the contrastive loss for a graph embedding $g_i$ is defined as a cross-entropy
+loss over cosine similarities with all text embeddings in the current batch and in the
+memory queue:
+\begin{equation}
+\mathcal{L}_i
+=
+-\log
+\frac{
+\exp\!\left( \mathrm{scale} \cdot \langle g_i, t_i \rangle \right)
+}{
+\sum\limits_{t \in \{t_1,\dots,t_B\} \cup \mathcal{Q}}
+\exp\!\left( \mathrm{scale} \cdot \langle g_i, t \rangle \right)
+},
+\end{equation}
+where $\langle \cdot, \cdot \rangle$ denotes cosine similarity, and \texttt{scale} is a
+learnable temperature parameter controlling the sharpness of the similarity distribution.
+
+\medskip
+
+The training objective is obtained by averaging $\mathcal{L}_i$ over the batch. The
+temperature parameter \texttt{scale} is jointly optimized with the graph encoder and
+constrained to a fixed range for numerical stability, progressively improving retrieval discrimination.
+
+\subsection{Training Dynamics, Temperature Scaling and Model Selection (train\_gcn.py)}
+\label{subsec:training_dynamics}
+
+The evolution of the contrastive training loss, the temperature scaling parameter, and
+the validation retrieval performance throughout training is reported in
+Figure~\ref{fig:training_curves} (Appendix~\ref{app:training_dynamics}).
+During training, the validation set is used exclusively for model selection and early
+stopping based on Mean Reciprocal Rank (MRR), and is
+never used for gradient updates. 
+
+\paragraph{Evaluation metric (MRR).}
+Model performance is evaluated using the Mean Reciprocal Rank (MRR). For a given query molecule, MRR measures the inverse of the rank at
+which the correct caption is retrieved among all candidate captions. Formally, if the
+correct caption for query $i$ is ranked at position $r_i$, the MRR is defined as
+\[
+\mathrm{MRR} = \frac{1}{N} \sum_{i=1}^{N} \frac{1}{r_i}.
+\]
+This metric directly reflects the quality of the joint embedding space for nearest-neighbor
+retrieval, and is particularly well suited to our setting, where inference consists in
+selecting the most relevant caption from a large candidate pool.
+
+\paragraph{Training behavior.}
+The contrastive loss decreases smoothly and monotonically throughout training, from
+approximately $9.77$ at epoch~1 to about $2.36$ at epoch~60. This behavior indicates a
+stable optimization process and a progressively improved alignment between molecular graph
+embeddings and their corresponding textual representations.
+Concurrently, validation MRR improves rapidly during the early stages of training. Within
+the first ten epochs, MRR increases from $0.14$ to over $0.57$, showing that the contrastive
+objective quickly structures the embedding space. Performance then continues to improve
+more gradually, eventually reaching a peak validation MRR of $0.8848$ at epoch~58. After
+this point, small fluctuations are observed despite continued loss reduction, suggesting
+the onset of mild overfitting.
+Although the training loss continues to decrease throughout the full training,
+validation MRR reaches its maximum at epoch~58 and does not improve consistently
+afterwards. To prevent performance degradation, we employ early stopping based on
+validation MRR rather than training loss. 
+
+\paragraph{Temperature scaling.}
+As discussed in Section \ref{subsec:CTO}, \texttt{scale} parameter controls the sharpness
+of the softmax distribution over similarity scores: larger values emphasize harder
+negatives by amplifying similarity differences between matched and mismatched pairs.
+During training, the scale increases smoothly from approximately $14.7$ to $60.0$,
+reflecting a gradual sharpening of the similarity landscape as the representations become
+more discriminative. 
+
+\paragraph{Training configuration.}
+The graph encoder is trained for up to $60$ epochs using the AdamW optimizer with a learning
+rate of $2 \times 10^{-4}$ and a weight decay of $10^{-4}$. Training is performed with a
+batch size of $256$, and gradient clipping with a maximum norm of $1.0$ is applied to
+improve stability. The model consists of $5$ stacked GINE layers with a hidden dimension of
+$512$ and a dropout rate of $0.1$. To strengthen the contrastive signal, a memory queue of
+$65{,}536$ text embeddings is maintained, providing a large set of additional negative
+examples. 
+
+\subsection{Two-Stage Inference: Retrieval and Neural Reranking (retrieval\_answer.py)}
+
+In the baseline implementation (v0), inference was performed using a simple nearest-neighbor
+strategy: each test molecular graph was embedded using the trained graph encoder, and the
+caption corresponding to the most similar training text embedding (according to cosine
+similarity) was directly selected as the prediction. While computationally efficient, this
+approach relies on a linear similarity measure and can struggle to discriminate among
+multiple highly similar candidates, motivating the use of learned reranking models
+\cite{huang2013learning}.
+
+\medskip
+
+In our approach, we extend this inference procedure by introducing a two-stage strategy. In the first stage, the trained graph encoder maps a test molecule to a graph embedding, which is compared via cosine similarity to all training text embeddings. The top-$K$ most similar candidate captions are retrieved. This step is designed to maximize recall, ensuring that the correct or most relevant caption is very likely to be included in the candidate set.
+
+\medskip
+
+In the second stage, a lightweight neural reranker is applied to refine the retrieved
+candidate set. The reranker follows an
+empirical design inspired by standard practices in the literature and scores each
+candidate caption using rich interaction features between the query graph embedding,
+the candidate text embedding, and the candidate graph embedding. By combining
+element-wise products, absolute differences, and cosine similarity scores within a
+non-linear multilayer perceptron, the model captures compatibility patterns that go
+beyond simple cosine similarity.
+The reranker is trained using a listwise cross-entropy objective, where it learns to identify the correct caption among a subset of retrieved candidates \cite{cao2007learning}. Importantly, this model is trained without updating the graph encoder, which remains fixed after contrastive training. This design choice enables efficient optimization of the reranker while preserving the quality of the learned embedding space.
+At inference time, the final prediction for each test molecule is the caption with the highest reranker score among the retrieved candidates. 
+
+\section{Results}
+\label{sec:results}
+
+Model performance is evaluated on Kaggle using a composite metric that combines lexical and semantic similarity between the predicted captions and the ground-truth descriptions. Specifically, the evaluation relies on the BLEU-4 F1 score, which measures n-gram overlap, and BERTScore computed with a RoBERTa-based model, which captures semantic similarity at the token embedding level. The final score used for ranking is obtained by aggregating these two metrics.
+
+\medskip
+
+Using the proposed retrieval-based pipeline with contrastive graph-text alignment and neural reranking, our approach achieves a score of 0.659 on the public leaderboard. For comparison, the provided baseline reaches a score of approximately 0.48, highlighting the substantial improvement obtained through the proposed modifications. These results demonstrate the effectiveness of enhancing retrieval-based methods for molecular graph captioning under the given computational constraints.
+
+\section{Discussion and Limitations}
+\label{sec:discussion}
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+\newpage
+
+\appendix
+
+\section{Data Analysis Figures}
+\label{app:data_analysis}
+
+This appendix provides visualizations related to the dataset analysis
+presented in Section~\ref{sec:data}. 
+
+\medskip
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figs/nodes_distribution.png}
+    \caption{Distribution of the number of nodes per molecule in the training set.}
+    \label{fig:nodes_dist}
+\end{figure}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figs/edges_distribution.png}
+    \caption{Distribution of the number of edges per molecule in the training set.}
+    \label{fig:edges_dist}
+\end{figure}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figs/caption_words_distribution.png}
+    \caption{Distribution of caption lengths measured in number of words.}
+    \label{fig:caption_words}
+\end{figure}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figs/caption_chars_distribution.png}
+    \caption{Distribution of caption lengths measured in number of characters.}
+    \label{fig:caption_chars}
+\end{figure}
+
+\section{Training Curves and Optimization Dynamics}
+\label{app:training_dynamics}
+
+This appendix provides visualizations related to the training dynamics of the contrastive graph encoder discussed in Section~\ref{subsec:training_dynamics}.
+
+\medskip
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\columnwidth]{figs/training_curves_v4.png}
+    \caption{Training dynamics of the contrastive graph encoder.}
+    \label{fig:training_curves}
+\end{figure}
+
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}
+
