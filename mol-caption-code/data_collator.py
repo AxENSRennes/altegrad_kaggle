@@ -90,9 +90,15 @@ class MolCaptionDataCollator:
 
         # Create labels (mask prompt tokens with -100)
         labels = encodings['input_ids'].clone()
+
         for i, plen in enumerate(prompt_lengths):
-            labels[i, :plen] = -100
-        # Also mask padding tokens
+            # Find where content starts (after left padding)
+            content_positions = (encodings['attention_mask'][i] == 1).nonzero(as_tuple=True)[0]
+            if len(content_positions) > 0:
+                content_start = content_positions[0].item()
+                labels[i, content_start:content_start + plen] = -100
+
+        # Mask padding tokens
         labels[encodings['attention_mask'] == 0] = -100
 
         return {
@@ -151,8 +157,15 @@ class MolCaptionDataCollatorSimple:
 
         # Create labels (mask prompt tokens with -100)
         labels = encodings['input_ids'].clone()
+
         for i, plen in enumerate(prompt_lengths):
-            labels[i, :plen] = -100
+            # Find where content starts (after left padding)
+            content_positions = (encodings['attention_mask'][i] == 1).nonzero(as_tuple=True)[0]
+            if len(content_positions) > 0:
+                content_start = content_positions[0].item()
+                labels[i, content_start:content_start + plen] = -100
+
+        # Mask padding tokens
         labels[encodings['attention_mask'] == 0] = -100
 
         return {
