@@ -48,6 +48,10 @@ def train_full_pipeline(
     stage2_grad_accum: int = None,
     stage2_lr_proj: float = None,
     stage2_lr_lora: float = None,
+    lora_r: int = None,
+    lora_alpha: int = None,
+    lora_dropout: float = None,
+    lora_target_modules: tuple = None,
 ):
     """
     Run the full training pipeline.
@@ -62,6 +66,10 @@ def train_full_pipeline(
         stage2_grad_accum: Override Stage 2 gradient accumulation steps
         stage2_lr_proj: Override Stage 2 projector learning rate
         stage2_lr_lora: Override Stage 2 LoRA learning rate
+        lora_r: Override LoRA rank
+        lora_alpha: Override LoRA alpha
+        lora_dropout: Override LoRA dropout
+        lora_target_modules: Override LoRA target modules
     """
     # Setup config
     config = get_config(mode=mode)
@@ -80,6 +88,16 @@ def train_full_pipeline(
         config.stage2_lr_proj = stage2_lr_proj
     if stage2_lr_lora is not None:
         config.stage2_lr_lora = stage2_lr_lora
+
+    # Apply CLI overrides for LoRA
+    if lora_r is not None:
+        config.lora_r = lora_r
+    if lora_alpha is not None:
+        config.lora_alpha = lora_alpha
+    if lora_dropout is not None:
+        config.lora_dropout = lora_dropout
+    if lora_target_modules is not None:
+        config.lora_target_modules = lora_target_modules
 
     set_seed(config.seed)
 
@@ -247,6 +265,28 @@ def main():
         type=float,
         help="Override Stage 2 LoRA learning rate"
     )
+    # LoRA configuration overrides
+    parser.add_argument(
+        "--lora-r",
+        type=int,
+        help="Override LoRA rank"
+    )
+    parser.add_argument(
+        "--lora-alpha",
+        type=int,
+        help="Override LoRA alpha"
+    )
+    parser.add_argument(
+        "--lora-dropout",
+        type=float,
+        help="Override LoRA dropout"
+    )
+    parser.add_argument(
+        "--lora-target-modules",
+        type=str,
+        nargs="+",
+        help="Override LoRA target modules (e.g., q_proj k_proj v_proj o_proj)"
+    )
     args = parser.parse_args()
 
     if args.inference:
@@ -264,6 +304,7 @@ def main():
         )
     else:
         # Full training
+        lora_modules = tuple(args.lora_target_modules) if args.lora_target_modules else None
         train_full_pipeline(
             mode=args.mode,
             use_wandb=args.wandb,
@@ -274,6 +315,10 @@ def main():
             stage2_grad_accum=args.stage2_grad_accum,
             stage2_lr_proj=args.stage2_lr_proj,
             stage2_lr_lora=args.stage2_lr_lora,
+            lora_r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout,
+            lora_target_modules=lora_modules,
         )
 
 

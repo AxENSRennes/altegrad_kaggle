@@ -56,7 +56,18 @@ subprocess.run([
     "--mode", "full",
     "--hardware", "tpu",
     "--skip-stage1",
-    "--wandb"
+    "--wandb",
+    # Training parameter overrides
+    "--stage2-epochs", "1",
+    "--stage2-batch-size", "4",
+    "--stage2-grad-accum", "4",
+    "--stage2-lr-proj", "1e-4",
+    "--stage2-lr-lora", "1e-5",
+    # LoRA configuration
+    "--lora-r", "64",
+    "--lora-alpha", "128",
+    "--lora-dropout", "0.05",
+    "--lora-target-modules", "q_proj", "k_proj", "v_proj", "o_proj",
 ], check=True)
 
 print("Training complete!")
