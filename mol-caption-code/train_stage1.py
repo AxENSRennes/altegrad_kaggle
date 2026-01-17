@@ -125,27 +125,27 @@ def train_stage1(
             scaler.update()
             scheduler.step()
 
-            # Update metrics
-            epoch_loss += loss.item()
+            # Update metrics - use detach() to avoid sync barrier
+            epoch_loss = epoch_loss + loss.detach()
             num_batches += 1
             global_step += 1
 
-            # Update progress bar
+            # Update progress bar - call .item() only for display
             pbar.set_postfix({
-                "loss": f"{loss.item():.4f}",
+                "loss": f"{loss.detach().item():.4f}",
                 "lr": f"{scheduler.get_last_lr()[0]:.2e}",
             })
 
-            # Log to W&B
+            # Log to W&B - use detach() before .item()
             if logger and global_step % config.log_every_n_steps == 0:
                 logger.log({
-                    "stage1/loss": loss.item(),
+                    "stage1/loss": loss.detach().item(),
                     "stage1/lr": scheduler.get_last_lr()[0],
                     "stage1/grad_norm": get_grad_norm(model.projector),
                 }, step=global_step)
 
-        # Epoch metrics
-        avg_train_loss = epoch_loss / max(num_batches, 1)
+        # Epoch metrics - call .item() only at epoch end to avoid sync barriers
+        avg_train_loss = (epoch_loss / max(num_batches, 1)).item()
 
         # Validation
         val_loss, val_cos_sim = evaluate_alignment(model, val_loader, device, config)
@@ -222,6 +222,7 @@ def evaluate_alignment(
     model.projector.eval()
     use_amp = config.use_amp and device == "cuda"
 
+    # Accumulate as tensors to avoid sync barriers
     total_loss = 0.0
     total_cos_sim = 0.0
     num_batches = 0
@@ -255,12 +256,14 @@ def evaluate_alignment(
                 dim=-1,
             ).mean()
 
-        total_loss += loss.item()
-        total_cos_sim += cos_sim.item()
+        # Accumulate detached values
+        total_loss += loss.detach().float()
+        total_cos_sim += cos_sim.detach().float()
         num_batches += 1
 
-    avg_loss = total_loss / max(num_batches, 1)
-    avg_cos_sim = total_cos_sim / max(num_batches, 1)
+    # Call .item() only at the end
+    avg_loss = (total_loss / max(num_batches, 1)).item() if isinstance(total_loss, torch.Tensor) else total_loss / max(num_batches, 1)
+    avg_cos_sim = (total_cos_sim / max(num_batches, 1)).item() if isinstance(total_cos_sim, torch.Tensor) else total_cos_sim / max(num_batches, 1)
 
     return avg_loss, avg_cos_sim
 

@@ -1,5 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+Main entry point for Molecular Captioning training pipeline.
+
+Supports multiple hardware backends via Accelerate:
+- GPU: Standard CUDA training with optional 4-bit quantization
+- TPU: TPU v5e-8 training via torch_xla
+- CPU: Local testing without GPU
+
+Usage:
+    # GPU training (default)
+    python run.py --mode quick
+
+    # CPU testing (laptop)
+    python run.py --mode quick --hardware cpu
+
+    # TPU training (Kaggle)
+    accelerate launch --config_file accelerate_config_tpu.yaml run.py --mode quick --hardware tpu
+
+    # Inference only
+    python run.py --inference --checkpoint outputs/stage2_best.pt
+"""
+
 import os
 # CRITICAL: This MUST be set before any other imports
 os.environ["NPY_DISABLE_ARRAY_API"] = "1"
@@ -10,7 +32,7 @@ import torch
 from config import get_config
 from model_wrapper import create_model
 from train_stage1 import train_stage1
-from train_stage2 import train_stage2
+from train_stage2 import train_stage2, train_stage2_legacy
 from inference import run_inference
 from utils import set_seed, WandBLogger, ensure_dir
 from report import print_config_summary
@@ -20,6 +42,8 @@ def train_full_pipeline(
     mode: str = "quick",
     use_wandb: bool = False,
     skip_stage1: bool = False,
+    hardware: str = "auto",
+    use_legacy_training: bool = False,
 ):
     """
     Run the full training pipeline.
@@ -28,17 +52,39 @@ def train_full_pipeline(
         mode: Experiment mode ("quick", "medium", "full")
         use_wandb: Whether to log to W&B
         skip_stage1: Skip Stage 1 alignment (use for continuing training)
+        hardware: Hardware mode ("auto", "gpu", "tpu", "cpu")
+        use_legacy_training: Use legacy training loop instead of TRL
     """
-    # Setup
+    # Setup config
     config = get_config(mode=mode)
     config.use_wandb = use_wandb
+    config.hardware_mode = hardware
+    config.detect_hardware()
     set_seed(config.seed)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # Determine device based on hardware mode
+    if config.hardware_mode == "tpu":
+        try:
+            import torch_xla.core.xla_model as xm
+            device = xm.xla_device()
+            print(f"Using TPU device: {device}")
+        except ImportError:
+            print("Warning: torch_xla not available, falling back to CPU")
+            device = "cpu"
+            config.hardware_mode = "cpu"
+    elif config.hardware_mode == "cpu":
+        device = "cpu"
+    else:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if device == "cpu":
+            config.hardware_mode = "cpu"
+
     print(f"\n{'=' * 60}")
     print(f"Molecular Captioning Training Pipeline")
     print(f"Mode: {mode}")
+    print(f"Hardware: {config.hardware_mode}")
     print(f"Device: {device}")
+    print(f"Quantization: {config.use_quantization}")
     print(f"{'=' * 60}\n")
 
     print_config_summary(config)
@@ -48,13 +94,13 @@ def train_full_pipeline(
 
     # Create model
     print("\nCreating model...")
-    model = create_model(config, device=device)
+    model = create_model(config, device=str(device))
     model.print_trainable_parameters()
 
     # Setup W&B
     logger = WandBLogger(enabled=config.use_wandb)
     if config.use_wandb:
-        logger.init(config.wandb_project, config, tags=[mode])
+        logger.init(config.wandb_project, config, tags=[mode, config.hardware_mode])
 
     # Stage 1: Alignment
     if not skip_stage1:
@@ -71,8 +117,13 @@ def train_full_pipeline(
     print("\n" + "=" * 60)
     print("STAGE 2: Supervised Fine-Tuning")
     print("=" * 60)
-    stage2_metrics = train_stage2(model, config, logger, load_stage1=True, start_step=stage1_final_step)
-    print(f"Stage 2 complete: bleu4={stage2_metrics['bleu4']:.2f}")
+
+    if use_legacy_training:
+        stage2_metrics = train_stage2_legacy(model, config, logger, load_stage1=True, start_step=stage1_final_step)
+    else:
+        stage2_metrics = train_stage2(model, config, logger, load_stage1=True, start_step=stage1_final_step)
+
+    print(f"Stage 2 complete: bleu4={stage2_metrics.get('bleu4', 0.0):.2f}")
 
     # Inference (full mode only)
     if mode == "full":
@@ -115,6 +166,18 @@ def main():
         help="Skip Stage 1 alignment training"
     )
     parser.add_argument(
+        "--hardware",
+        type=str,
+        default="auto",
+        choices=["auto", "gpu", "tpu", "cpu"],
+        help="Hardware mode (auto, gpu, tpu, cpu)"
+    )
+    parser.add_argument(
+        "--legacy",
+        action="store_true",
+        help="Use legacy training loop (without TRL/Accelerate)"
+    )
+    parser.add_argument(
         "--inference",
         action="store_true",
         help="Run inference only"
@@ -145,10 +208,12 @@ def main():
     if args.inference:
         # Inference only
         config = get_config(mode=args.mode)
+        config.hardware_mode = args.hardware
+        config.detect_hardware()
         run_inference(
-            config, 
-            checkpoint_path=args.checkpoint, 
-            output_path=args.output, 
+            config,
+            checkpoint_path=args.checkpoint,
+            output_path=args.output,
             limit=args.limit,
             batch_size=args.batch_size
         )
@@ -158,6 +223,8 @@ def main():
             mode=args.mode,
             use_wandb=args.wandb,
             skip_stage1=args.skip_stage1,
+            hardware=args.hardware,
+            use_legacy_training=args.legacy,
         )
 
 

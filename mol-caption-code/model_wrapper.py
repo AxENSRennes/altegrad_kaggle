@@ -89,12 +89,45 @@ class MolCaptionModel(nn.Module):
 
         self.graph_token_id = self.tokenizer.convert_tokens_to_ids("<|graph|>")
 
-        # 4. Load LLM (4-bit quantization on CUDA, full precision on CPU)
+        # 4. Load LLM with hardware-aware configuration
         from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 
-        use_quantization = torch.cuda.is_available() and device != "cpu"
+        # Detect hardware mode from config or infer from device
+        hardware_mode = getattr(config, 'hardware_mode', 'auto')
+        use_quantization = getattr(config, 'use_quantization', True)
 
-        if use_quantization:
+        if hardware_mode == "auto":
+            # Auto-detect: TPU check, then GPU, then CPU
+            try:
+                import torch_xla
+                hardware_mode = "tpu"
+            except ImportError:
+                hardware_mode = "gpu" if torch.cuda.is_available() else "cpu"
+
+        # Disable quantization for TPU/CPU
+        if hardware_mode in ("tpu", "cpu"):
+            use_quantization = False
+
+        if hardware_mode == "tpu":
+            # TPU: bfloat16, no quantization, no device_map
+            print("Loading LLM for TPU (bfloat16, no quantization)")
+            self.llm = AutoModelForCausalLM.from_pretrained(
+                config.llm_name,
+                torch_dtype=torch.bfloat16,
+                trust_remote_code=True,
+            )
+        elif hardware_mode == "cpu":
+            # CPU: float32, no quantization, for local testing
+            print("Loading LLM for CPU (float32, no quantization)")
+            self.llm = AutoModelForCausalLM.from_pretrained(
+                config.llm_name,
+                torch_dtype=torch.float32,
+                device_map={"": device},
+                trust_remote_code=True,
+            )
+        elif use_quantization and torch.cuda.is_available():
+            # GPU with BitsAndBytes 4-bit quantization
+            print("Loading LLM for GPU (4-bit quantization)")
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_quant_type="nf4",
@@ -108,14 +141,17 @@ class MolCaptionModel(nn.Module):
                 trust_remote_code=True,
             )
         else:
-            # CPU mode: load in float32 without quantization
-            print("Loading LLM without quantization (CPU mode)")
+            # GPU without quantization (bfloat16)
+            print("Loading LLM for GPU (bfloat16, no quantization)")
             self.llm = AutoModelForCausalLM.from_pretrained(
                 config.llm_name,
-                dtype=torch.float32,
-                device_map={"": device},
+                torch_dtype=torch.bfloat16,
+                device_map="auto",
                 trust_remote_code=True,
             )
+
+        # Store hardware mode for later use
+        self.hardware_mode = hardware_mode
 
         # Resize embeddings for new tokens
         self.llm.resize_token_embeddings(len(self.tokenizer))
@@ -145,8 +181,8 @@ class MolCaptionModel(nn.Module):
         if config.center_embeddings:
             # Load from embedded metadata
             self.txt_mean = torch.tensor(TXT_MEAN_V1, device=device)
-            # Ensure correct dtype (float16 if using quantization/amp)
-            if use_quantization:
+            # Ensure correct dtype based on hardware mode
+            if hardware_mode in ("tpu", "gpu"):
                 self.txt_mean = self.txt_mean.to(torch.bfloat16)
 
     def process_gnn_embeddings(self, g: torch.Tensor) -> torch.Tensor:
@@ -197,6 +233,9 @@ class MolCaptionModel(nn.Module):
         """
         Replace <|graph|> token positions with projected graph embeddings.
 
+        Uses XLA-compatible static masking with torch.where() instead of
+        dynamic .nonzero() indexing to avoid graph recompilation on TPU.
+
         Args:
             input_ids: Token IDs [batch_size, seq_len]
             graph_tokens: Projected graph embeddings [batch_size, num_tokens, llm_hidden]
@@ -208,17 +247,28 @@ class MolCaptionModel(nn.Module):
         inputs_embeds = self.llm.get_input_embeddings()(input_ids).clone()
 
         # Find <|graph|> token positions
-        graph_positions = (input_ids == self.graph_token_id)
+        graph_mask = (input_ids == self.graph_token_id)
 
-        # Replace with graph tokens
-        batch_size = input_ids.size(0)
-        for b in range(batch_size):
-            pos_mask = graph_positions[b]
-            if pos_mask.any():
-                pos_indices = pos_mask.nonzero(as_tuple=True)[0]
-                num_to_replace = min(len(pos_indices), graph_tokens.size(1))
-                for t in range(num_to_replace):
-                    inputs_embeds[b, pos_indices[t]] = graph_tokens[b, t]
+        # For single graph token (num_tokens=1) - most common case
+        if graph_tokens.size(1) == 1:
+            # Expand graph token to match sequence length for broadcasting
+            graph_token_expanded = graph_tokens.expand(-1, input_ids.size(1), -1)
+            inputs_embeds = torch.where(
+                graph_mask.unsqueeze(-1),
+                graph_token_expanded,
+                inputs_embeds
+            )
+        else:
+            # Multi-token: use cumsum for static indexing (XLA-compatible)
+            cumsum = graph_mask.long().cumsum(dim=1)
+            valid_mask = graph_mask & (cumsum <= graph_tokens.size(1))
+            token_idx = (cumsum - 1).clamp(min=0)
+
+            # Gather correct graph token per position
+            batch_size, seq_len, hidden = inputs_embeds.shape
+            token_idx_exp = token_idx.unsqueeze(-1).expand(-1, -1, hidden)
+            gathered = graph_tokens.gather(1, token_idx_exp.clamp(max=graph_tokens.size(1) - 1))
+            inputs_embeds = torch.where(valid_mask.unsqueeze(-1), gathered, inputs_embeds)
 
         return inputs_embeds
 

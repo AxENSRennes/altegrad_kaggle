@@ -108,6 +108,25 @@ class Config:
     train_subset: Optional[int] = None  # Set by apply_mode()
     val_subset: Optional[int] = None
 
+    # === Hardware Mode ===
+    hardware_mode: str = "auto"  # "auto", "gpu", "tpu", "cpu"
+    use_quantization: bool = True  # BitsAndBytes 4-bit (GPU only)
+
+    def detect_hardware(self) -> "Config":
+        """Auto-detect hardware and configure appropriately."""
+        if self.hardware_mode == "auto":
+            try:
+                import torch_xla
+                self.hardware_mode = "tpu"
+            except ImportError:
+                import torch
+                self.hardware_mode = "gpu" if torch.cuda.is_available() else "cpu"
+
+        # Disable quantization for non-GPU modes
+        if self.hardware_mode in ("tpu", "cpu"):
+            self.use_quantization = False
+        return self
+
     def apply_mode(self):
         """Apply experiment mode presets."""
         if self.experiment_mode == "quick":
