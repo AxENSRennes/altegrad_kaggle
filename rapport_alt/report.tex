@@ -326,7 +326,86 @@ element-wise products, absolute differences, and cosine similarity scores within
 non-linear multilayer perceptron, the model captures compatibility patterns that go
 beyond simple cosine similarity.
 The reranker is trained using a listwise cross-entropy objective, where it learns to identify the correct caption among a subset of retrieved candidates \cite{cao2007learning}. Importantly, this model is trained without updating the graph encoder, which remains fixed after contrastive training. This design choice enables efficient optimization of the reranker while preserving the quality of the learned embedding space.
-At inference time, the final prediction for each test molecule is the caption with the highest reranker score among the retrieved candidates. 
+At inference time, the final prediction for each test molecule is the caption with the highest reranker score among the retrieved candidates.
+
+\section{Generative Approach}
+\label{sec:generative}
+
+In addition to the retrieval-based pipeline, we explored the second methodological direction proposed in the challenge: building a fully generative graph-to-text model. Rather than selecting captions from a fixed training corpus, this approach aims to synthesize novel natural-language descriptions directly from molecular graph representations.
+
+\subsection{SMILES Representation}
+\label{subsec:smiles}
+
+To provide the language model with additional chemical context beyond the graph embedding, we leverage the SMILES (Simplified Molecular Input Line Entry System) notation~\cite{weininger1988smiles}. SMILES is a text-based linear representation of molecular structures that encodes atoms, bonds, and connectivity using ASCII characters.
+
+\medskip
+
+For example, ethanol (CH$_3$CH$_2$OH) is represented in SMILES as \texttt{CCO}, where the two carbons are implicitly bonded and the oxygen is attached to the second carbon. This compact notation allows the language model to interpret molecular structure through a familiar textual modality, complementing the learned graph embedding.
+
+\medskip
+
+In our implementation, SMILES strings are reconstructed from PyTorch Geometric graph objects using RDKit~\cite{rdkit}. The reconstruction extracts atomic numbers and formal charges from node features, maps edge feature indices to RDKit bond types, and builds the molecular graph before converting it to a canonical SMILES string.
+
+\subsection{Model Architecture}
+\label{subsec:gen_architecture}
+
+The generative pipeline combines three components: a frozen graph encoder, a learned projection layer, and a language model decoder.
+
+\paragraph{Graph encoder.}
+We reuse the same GINE-based molecular graph encoder trained with the contrastive objective described in Section~\ref{sec:method}. The encoder weights are frozen throughout generative training, preserving the learned graph representations and ensuring consistency between the retrieval and generative pipelines.
+
+\paragraph{Projector.}
+A three-layer multilayer perceptron, referred to as the ``SolidBridge'' projector, maps the 768-dimensional GNN output to the 1024-dimensional input space of the language model. Each layer applies a linear transformation followed by GELU activation, layer normalization, and dropout, except for the final layer which uses only a linear projection. The projector is initialized with careful weight scaling to ensure that output magnitudes match the expected distribution of language model input embeddings.
+
+\paragraph{Language model.}
+We employ Qwen3-0.6B as the text decoder, an efficient open-source language model well-suited to resource-constrained settings. To enable parameter-efficient fine-tuning, we apply Low-Rank Adaptation (LoRA)~\cite{hu2022lora} to the attention projection matrices (query, key, value, and output projections) with rank $r=64$ and scaling factor $\alpha=128$. The model is loaded with 4-bit quantization to reduce memory footprint.
+
+\paragraph{Graph token injection.}
+A special token \texttt{<|graph|>} is added to the vocabulary. During forward passes, the embedding at this token position is replaced with the projected graph embedding, enabling the language model to condition its generation on the molecular structure.
+
+\subsection{Two-Stage Training}
+\label{subsec:two_stage}
+
+Training proceeds in two stages: an alignment phase that bridges the embedding spaces, followed by supervised fine-tuning for caption generation.
+
+\paragraph{Stage 1: Alignment.}
+The first stage aligns the projected graph embeddings with the language model's text embedding space. For each training molecule, the description is passed through the language model encoder, and the mean-pooled hidden states serve as the target representation. The projector is trained to minimize the mean squared error between projected graph embeddings and these text embeddings.
+
+\medskip
+
+During this stage, only the projector is trainable; both the GNN encoder and the language model remain frozen. Training uses the AdamW optimizer with a learning rate of $10^{-3}$, cosine annealing with warmup, and gradient clipping. This stage establishes a geometric correspondence between the two modalities before attempting text generation.
+
+\paragraph{Stage 2: Supervised fine-tuning.}
+The second stage trains the model to generate natural-language captions. The input consists of a system prompt instructing the model to describe molecular properties, followed by a user message containing the SMILES string and the \texttt{<|graph|>} token. The target sequence includes the molecular description followed by an end-of-sequence token.
+
+\medskip
+
+The training objective is the standard cross-entropy loss for language modeling, where prompt tokens are masked and only description tokens contribute to the gradient. Both the projector and LoRA adapters are trainable, with separate learning rates: $10^{-4}$ for the projector and $10^{-5}$ for LoRA parameters. The reduced LoRA learning rate helps prevent catastrophic forgetting of the pretrained language model capabilities.
+
+\subsection{Results and Limitations}
+\label{subsec:gen_results}
+
+The generative approach achieved a Kaggle score of approximately 0.50, which is comparable to the provided baseline (0.48) but substantially below the retrieval-based approach (0.659). Qualitative analysis of the generated captions reveals that the model produces coherent, chemically-relevant descriptions with proper IUPAC nomenclature and functional group identification. However, some outputs exhibit redundancy, with repeated phrases or partially malformed structures.
+
+\medskip
+
+The primary limitation was computational resources. Training was conducted on Google Colab's free tier, which provides limited GPU hours and is subject to session disconnections. These constraints prevented us from running the full training configuration (approximately 9 hours) and limited experimentation to quick and medium modes with reduced training data and epochs.
+
+\medskip
+
+Managing GPU sessions on Colab proved challenging: frequent disconnections interrupted training runs, and the limited allocation made systematic hyperparameter tuning infeasible. As a result, the model was likely undertrained, and the gap between generative and retrieval performance may partly reflect insufficient optimization rather than fundamental architectural limitations.
+
+\subsection{Future Directions}
+\label{subsec:future}
+
+Several directions could potentially improve the generative approach, but remained unexplored due to resource constraints:
+
+\begin{itemize}
+    \item \textbf{Learning rate ablations.} The learning rate is a critical hyperparameter for supervised fine-tuning. Systematic exploration of different learning rate schedules and warmup strategies could significantly impact generation quality.
+    \item \textbf{Extended training.} Longer fine-tuning runs with more epochs and the full training dataset would allow the model to better learn the mapping between molecular structures and textual descriptions.
+    \item \textbf{Chain-of-thought reasoning.} Enabling thinking tokens before generation could allow the model to reason about molecular structure before producing the final caption, potentially improving accuracy for complex molecules.
+    \item \textbf{Alternative model scales.} Larger language models or different architectures might better capture the nuanced chemical vocabulary required for accurate molecular description.
+\end{itemize}
 
 \section{Results}
 \label{sec:results}

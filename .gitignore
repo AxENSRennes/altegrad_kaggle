@@ -23,3 +23,7 @@ outputs/submission_*.csv
 
 # Notebook with secrets
 gen_caption_notebook.ipynb
+
+# Report directory - only track report.tex
+rapport_alt/*
+!rapport_alt/report.tex
