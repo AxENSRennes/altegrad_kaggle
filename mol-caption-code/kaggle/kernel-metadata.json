@@ -1,0 +1,15 @@
+{
+  "id": "axelmau/mol-caption-stage2",
+  "title": "Mol Caption Stage 2 Training",
+  "code_file": "train_stage2_kaggle.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": true,
+  "enable_internet": true,
+  "competition_sources": ["molecular-graph-captioning"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}
