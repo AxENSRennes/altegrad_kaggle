@@ -161,6 +161,14 @@ class Config:
 
         return self
 
+    def with_lrs(self, lr_proj: float = None, lr_lora: float = None) -> "Config":
+        """Return self with modified Stage 2 learning rates (in-place)."""
+        if lr_proj is not None:
+            self.stage2_lr_proj = lr_proj
+        if lr_lora is not None:
+            self.stage2_lr_lora = lr_lora
+        return self
+
     @property
     def train_graphs_path(self) -> str:
         """Return train graphs path, checking data_dir first, then hf_checkpoints."""
