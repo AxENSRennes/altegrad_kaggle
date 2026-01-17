@@ -144,8 +144,11 @@ def train_stage1(
                     "stage1/grad_norm": get_grad_norm(model.projector),
                 }, step=global_step)
 
-        # Epoch metrics - call .item() only at epoch end to avoid sync barriers
-        avg_train_loss = (epoch_loss / max(num_batches, 1)).item()
+        # Epoch metrics - handle case where no batches were processed
+        if num_batches == 0:
+            avg_train_loss = 0.0
+        else:
+            avg_train_loss = (epoch_loss / num_batches).item()
 
         # Validation
         val_loss, val_cos_sim = evaluate_alignment(model, val_loader, device, config)
