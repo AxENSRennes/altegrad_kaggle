@@ -73,7 +73,10 @@ class Config:
     lora_r: int = 64
     lora_alpha: int = 128
     lora_dropout: float = 0.05
-    lora_target_modules: tuple = ("q_proj", "k_proj", "v_proj", "o_proj")
+    lora_target_modules: tuple = (
+        "q_proj", "k_proj", "v_proj", "o_proj",  # Attention
+        "gate_proj", "up_proj", "down_proj",      # MLP/FFN
+    )
 
     # === Stage 1: Alignment Training ===
     stage1_batch_size: int = 32

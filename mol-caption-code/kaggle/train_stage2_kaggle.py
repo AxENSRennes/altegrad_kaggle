@@ -67,7 +67,7 @@ subprocess.run([
     "--lora-r", "64",
     "--lora-alpha", "128",
     "--lora-dropout", "0.05",
-    "--lora-target-modules", "q_proj", "k_proj", "v_proj", "o_proj",
+    "--lora-target-modules", "q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj",
 ], check=True)
 
 print("Training complete!")
