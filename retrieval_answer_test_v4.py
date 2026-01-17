@@ -17,7 +17,7 @@ import torch.nn.functional as F
 import pandas as pd
 from torch.utils.data import DataLoader
 
-from train_gcn_v3 import MolGNN, infer_cardinalities_from_graphs
+from train_gcn_v5 import MolGNN, infer_cardinalities_from_graphs
 from data_utils import (
     load_id2emb,
     load_descriptions_from_graphs,
