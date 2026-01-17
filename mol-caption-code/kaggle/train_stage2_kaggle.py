@@ -7,6 +7,9 @@ import os
 # === Setup ===
 os.chdir("/kaggle/working")
 
+# Configure W&B authentication
+os.environ["WANDB_API_KEY"] = "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"
+
 # Install git-lfs
 subprocess.run(["apt-get", "install", "-y", "git-lfs"], check=True)
 subprocess.run(["git", "lfs", "install"], check=True)
@@ -52,7 +55,8 @@ subprocess.run([
     "run.py",
     "--mode", "full",
     "--hardware", "tpu",
-    "--skip-stage1"
+    "--skip-stage1",
+    "--wandb"
 ], check=True)
 
 print("Training complete!")
