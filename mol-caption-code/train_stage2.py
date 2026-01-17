@@ -11,11 +11,9 @@ import os
 # CRITICAL: This MUST be set before any other imports
 os.environ["NPY_DISABLE_ARRAY_API"] = "1"
 
-import math
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Optional
 
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -24,7 +22,7 @@ from transformers.trainer_callback import TrainerCallback
 
 from config import Config
 from model_wrapper import MolCaptionModel
-from dataset_caption import MolCaptionDatasetTRL, prepare_trl_dataloaders
+from dataset_caption import prepare_trl_dataloaders
 from data_collator import MolCaptionDataCollatorSimple
 from utils import (
     load_checkpoint,
@@ -32,12 +30,7 @@ from utils import (
     WandBLogger,
     get_grad_norm,
 )
-from report import (
-    print_progress_header,
-    print_training_report,
-    print_epoch_summary,
-    print_best_model_saved,
-)
+from report import print_progress_header, print_training_report
 from metrics import compute_metrics
 
 
@@ -146,7 +139,6 @@ def train_stage2(
     config: Config,
     logger: Optional[WandBLogger] = None,
     load_stage1: bool = True,
-    start_step: int = 0,
 ) -> Dict[str, float]:
     """
     Train Stage 2: Supervised Fine-Tuning on caption generation.
@@ -158,7 +150,6 @@ def train_stage2(
         config: Configuration object
         logger: Optional W&B logger
         load_stage1: Whether to load Stage 1 checkpoint
-        start_step: Starting global step (for logging continuity)
 
     Returns:
         Dictionary with final metrics
@@ -197,8 +188,6 @@ def train_stage2(
 
     model.llm.print_trainable_parameters()
 
-    # Calculate training steps
-    total_steps = (len(train_dataset) // config.stage2_batch_size) * config.stage2_epochs
     warmup_steps = config.stage2_warmup_steps
 
     # Training arguments
@@ -232,8 +221,13 @@ def train_stage2(
     )
 
     # Create trainer
+    # NOTE: We pass model.llm to Trainer for its bookkeeping, but compute_loss()
+    # uses self.mol_model for the actual forward pass. This works because:
+    # - create_optimizer() creates param groups for both projector AND LoRA
+    # - compute_loss() uses mol_model which includes the full pipeline
+    # - The Trainer's model is just for device placement, not the forward pass
     trainer = MolCaptionTrainer(
-        model=model.llm,  # Pass LLM for Trainer's model handling
+        model=model.llm,  # Pass LLM for Trainer's model/device handling
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset if config.compute_train_val else None,
@@ -322,7 +316,7 @@ def evaluate_generation(
     """
     model.projector.eval()
     model.llm.eval()
-    use_amp = config.use_amp and device == "cuda"
+    use_amp = config.use_amp and config.hardware_mode == "gpu"
 
     all_predictions = []
     all_references = []
@@ -331,7 +325,7 @@ def evaluate_generation(
     num_batches = 0
     num_samples = 0
 
-    for batch in val_loader:
+    for batch in tqdm(val_loader, desc="Evaluating"):
         if num_samples >= max_samples:
             break
 
@@ -343,7 +337,7 @@ def evaluate_generation(
         smiles = batch["smiles"]
 
         # Compute loss
-        with torch.amp.autocast(device, enabled=use_amp):
+        with torch.amp.autocast("cuda", enabled=use_amp):
             outputs = model(
                 graphs=graphs,
                 input_ids=input_ids,

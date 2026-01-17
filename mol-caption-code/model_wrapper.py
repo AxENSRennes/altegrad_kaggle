@@ -12,9 +12,8 @@ The model injects graph embeddings as "soft tokens" at the <|graph|> position
 in the input sequence, enabling the LLM to generate molecule descriptions.
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 
-import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -99,9 +98,12 @@ class MolCaptionModel(nn.Module):
         if hardware_mode == "auto":
             # Auto-detect: TPU check, then GPU, then CPU
             try:
-                import torch_xla
-                hardware_mode = "tpu"
-            except ImportError:
+                import importlib.util
+                if importlib.util.find_spec("torch_xla") is not None:
+                    hardware_mode = "tpu"
+                else:
+                    hardware_mode = "gpu" if torch.cuda.is_available() else "cpu"
+            except Exception:
                 hardware_mode = "gpu" if torch.cuda.is_available() else "cpu"
 
         # Disable quantization for TPU/CPU
@@ -238,7 +240,7 @@ class MolCaptionModel(nn.Module):
 
         Args:
             input_ids: Token IDs [batch_size, seq_len]
-            graph_tokens: Projected graph embeddings [batch_size, num_tokens, llm_hidden]
+            graph_tokens: Projected graph embeddings [batch_size, 1, llm_hidden]
 
         Returns:
             Modified input embeddings [batch_size, seq_len, llm_hidden]
@@ -249,26 +251,13 @@ class MolCaptionModel(nn.Module):
         # Find <|graph|> token positions
         graph_mask = (input_ids == self.graph_token_id)
 
-        # For single graph token (num_tokens=1) - most common case
-        if graph_tokens.size(1) == 1:
-            # Expand graph token to match sequence length for broadcasting
-            graph_token_expanded = graph_tokens.expand(-1, input_ids.size(1), -1)
-            inputs_embeds = torch.where(
-                graph_mask.unsqueeze(-1),
-                graph_token_expanded,
-                inputs_embeds
-            )
-        else:
-            # Multi-token: use cumsum for static indexing (XLA-compatible)
-            cumsum = graph_mask.long().cumsum(dim=1)
-            valid_mask = graph_mask & (cumsum <= graph_tokens.size(1))
-            token_idx = (cumsum - 1).clamp(min=0)
-
-            # Gather correct graph token per position
-            batch_size, seq_len, hidden = inputs_embeds.shape
-            token_idx_exp = token_idx.unsqueeze(-1).expand(-1, -1, hidden)
-            gathered = graph_tokens.gather(1, token_idx_exp.clamp(max=graph_tokens.size(1) - 1))
-            inputs_embeds = torch.where(valid_mask.unsqueeze(-1), gathered, inputs_embeds)
+        # Expand graph token to match sequence length for broadcasting
+        graph_token_expanded = graph_tokens.expand(-1, input_ids.size(1), -1)
+        inputs_embeds = torch.where(
+            graph_mask.unsqueeze(-1),
+            graph_token_expanded,
+            inputs_embeds
+        )
 
         return inputs_embeds
 
@@ -419,7 +408,6 @@ class MolCaptionModel(nn.Module):
         from config import SYSTEM_PROMPT, USER_PROMPT_FORMAT
 
         self.eval()
-        batch_size = len(smiles_list)
 
         # Build prompts using tokenizer.apply_chat_template
         prompts = []
