@@ -389,6 +389,7 @@ class MolCaptionModel(nn.Module):
         temperature: float = 0.7,
         do_sample: bool = True,
         top_p: float = 0.9,
+        enable_thinking: bool = False,
     ) -> List[str]:
         """
         Generate captions for a batch of molecular graphs.
@@ -401,27 +402,31 @@ class MolCaptionModel(nn.Module):
             temperature: Sampling temperature
             do_sample: Whether to use sampling
             top_p: Nucleus sampling threshold
+            enable_thinking: Enable thinking mode (model reasons before answering)
 
         Returns:
             List of generated caption strings
         """
-        from config import SYSTEM_PROMPT, USER_PROMPT_FORMAT
+        from config import SYSTEM_PROMPT, SYSTEM_PROMPT_THINK, USER_PROMPT_FORMAT
 
         self.eval()
+
+        # Select system prompt based on thinking mode
+        system_prompt = SYSTEM_PROMPT_THINK if enable_thinking else SYSTEM_PROMPT
 
         # Build prompts using tokenizer.apply_chat_template
         prompts = []
         for s in smiles_list:
             messages = [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": USER_PROMPT_FORMAT.format(smiles=s)}
             ]
-            # Use enable_thinking=False to strictly disable reasoning and add empty <think> tags
+            # Pass enable_thinking to chat template
             p = self.tokenizer.apply_chat_template(
-                messages, 
-                tokenize=False, 
+                messages,
+                tokenize=False,
                 add_generation_prompt=True,
-                enable_thinking=False
+                enable_thinking=enable_thinking
             )
             prompts.append(p)
 
@@ -460,6 +465,9 @@ class MolCaptionModel(nn.Module):
         generated_texts = []
         for output in outputs:
             text = self.tokenizer.decode(output, skip_special_tokens=True)
+            # Post-process: strip thinking content if thinking was enabled
+            if enable_thinking and "</think>" in text:
+                text = text.split("</think>", 1)[1]
             generated_texts.append(text.strip())
 
         return generated_texts

@@ -192,6 +192,12 @@ def main():
         default=8,
         help="Batch size for inference"
     )
+    parser.add_argument(
+        "--thinking",
+        action="store_true",
+        default=False,
+        help="Enable thinking mode at inference (model reasons before answering)"
+    )
     args = parser.parse_args()
 
     if args.inference:
@@ -204,7 +210,8 @@ def main():
             checkpoint_path=args.checkpoint,
             output_path=args.output,
             limit=args.limit,
-            batch_size=args.batch_size
+            batch_size=args.batch_size,
+            enable_thinking=args.thinking,
         )
     else:
         # Full training

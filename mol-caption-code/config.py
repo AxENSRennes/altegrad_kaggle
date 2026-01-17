@@ -216,6 +216,10 @@ class Config:
 
 # Prompt components for caption generation (using tokenizer.apply_chat_template)
 SYSTEM_PROMPT = "/no_think\nYou are an expert chemist. Describe the molecule's chemical properties and functional groups concisely."
+
+# For optional thinking mode (no /no_think prefix)
+SYSTEM_PROMPT_THINK = "You are an expert chemist. Describe the molecule's chemical properties and functional groups concisely."
+
 USER_PROMPT_FORMAT = "Molecule Structure: <|graph|>\nSMILES: {smiles}"
 
 

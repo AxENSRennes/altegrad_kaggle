@@ -52,6 +52,7 @@ def generate_submissions(
     temperature: float = 0.7,
     do_sample: bool = True,
     limit: Optional[int] = None,
+    enable_thinking: bool = False,
 ) -> List[tuple]:
     """
     Generate captions for all test molecules.
@@ -65,6 +66,7 @@ def generate_submissions(
         temperature: Sampling temperature
         do_sample: Whether to use sampling
         limit: Optional limit on number of molecules to process
+        enable_thinking: Enable thinking mode (model reasons before answering)
 
     Returns:
         List of (mol_id, caption) tuples
@@ -99,6 +101,7 @@ def generate_submissions(
                 num_beams=num_beams,
                 temperature=temperature,
                 do_sample=do_sample,
+                enable_thinking=enable_thinking,
             )
 
             # Clean up captions
@@ -159,6 +162,7 @@ def run_inference(
     output_path: Optional[str] = None,
     limit: Optional[int] = None,
     batch_size: Optional[int] = None,
+    enable_thinking: bool = False,
 ):
     """
     Run full inference pipeline.
@@ -169,6 +173,7 @@ def run_inference(
         output_path: Optional output path (uses config default if None)
         limit: Optional limit on number of molecules to process
         batch_size: Optional batch size for generation
+        enable_thinking: Enable thinking mode (model reasons before answering)
     """
     # Setup
     if config is None:
@@ -204,6 +209,7 @@ def run_inference(
         temperature=0.7,
         do_sample=True,
         limit=limit,
+        enable_thinking=enable_thinking,
     )
 
     # Save
