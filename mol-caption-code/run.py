@@ -32,7 +32,7 @@ import torch
 from config import get_config
 from model_wrapper import create_model
 from train_stage1 import train_stage1
-from train_stage2 import train_stage2, train_stage2_legacy
+from train_stage2 import train_stage2
 from inference import run_inference
 from utils import set_seed, WandBLogger, ensure_dir
 from report import print_config_summary
@@ -43,7 +43,6 @@ def train_full_pipeline(
     use_wandb: bool = False,
     skip_stage1: bool = False,
     hardware: str = "auto",
-    use_legacy_training: bool = False,
 ):
     """
     Run the full training pipeline.
@@ -53,7 +52,6 @@ def train_full_pipeline(
         use_wandb: Whether to log to W&B
         skip_stage1: Skip Stage 1 alignment (use for continuing training)
         hardware: Hardware mode ("auto", "gpu", "tpu", "cpu")
-        use_legacy_training: Use legacy training loop instead of TRL
     """
     # Setup config
     config = get_config(mode=mode)
@@ -118,10 +116,7 @@ def train_full_pipeline(
     print("STAGE 2: Supervised Fine-Tuning")
     print("=" * 60)
 
-    if use_legacy_training:
-        stage2_metrics = train_stage2_legacy(model, config, logger, load_stage1=True, start_step=stage1_final_step)
-    else:
-        stage2_metrics = train_stage2(model, config, logger, load_stage1=True, start_step=stage1_final_step)
+    stage2_metrics = train_stage2(model, config, logger, load_stage1=True, start_step=stage1_final_step)
 
     print(f"Stage 2 complete: bleu4={stage2_metrics.get('bleu4', 0.0):.2f}")
 
@@ -173,11 +168,6 @@ def main():
         help="Hardware mode (auto, gpu, tpu, cpu)"
     )
     parser.add_argument(
-        "--legacy",
-        action="store_true",
-        help="Use legacy training loop (without TRL/Accelerate)"
-    )
-    parser.add_argument(
         "--inference",
         action="store_true",
         help="Run inference only"
@@ -224,7 +214,6 @@ def main():
             use_wandb=args.wandb,
             skip_stage1=args.skip_stage1,
             hardware=args.hardware,
-            use_legacy_training=args.legacy,
         )
 
 
