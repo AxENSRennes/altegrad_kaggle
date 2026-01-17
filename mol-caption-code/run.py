@@ -43,6 +43,11 @@ def train_full_pipeline(
     use_wandb: bool = False,
     skip_stage1: bool = False,
     hardware: str = "auto",
+    stage2_epochs: int = None,
+    stage2_batch_size: int = None,
+    stage2_grad_accum: int = None,
+    stage2_lr_proj: float = None,
+    stage2_lr_lora: float = None,
 ):
     """
     Run the full training pipeline.
@@ -52,12 +57,30 @@ def train_full_pipeline(
         use_wandb: Whether to log to W&B
         skip_stage1: Skip Stage 1 alignment (use for continuing training)
         hardware: Hardware mode ("auto", "gpu", "tpu", "cpu")
+        stage2_epochs: Override Stage 2 epochs
+        stage2_batch_size: Override Stage 2 batch size per device
+        stage2_grad_accum: Override Stage 2 gradient accumulation steps
+        stage2_lr_proj: Override Stage 2 projector learning rate
+        stage2_lr_lora: Override Stage 2 LoRA learning rate
     """
     # Setup config
     config = get_config(mode=mode)
     config.use_wandb = use_wandb
     config.hardware_mode = hardware
     config.detect_hardware()
+
+    # Apply CLI overrides for Stage 2
+    if stage2_epochs is not None:
+        config.stage2_epochs = stage2_epochs
+    if stage2_batch_size is not None:
+        config.stage2_batch_size = stage2_batch_size
+    if stage2_grad_accum is not None:
+        config.stage2_grad_accum = stage2_grad_accum
+    if stage2_lr_proj is not None:
+        config.stage2_lr_proj = stage2_lr_proj
+    if stage2_lr_lora is not None:
+        config.stage2_lr_lora = stage2_lr_lora
+
     set_seed(config.seed)
 
     # Determine device based on hardware mode
@@ -198,6 +221,32 @@ def main():
         default=False,
         help="Enable thinking mode at inference (model reasons before answering)"
     )
+    # Stage 2 training overrides
+    parser.add_argument(
+        "--stage2-epochs",
+        type=int,
+        help="Override Stage 2 epochs"
+    )
+    parser.add_argument(
+        "--stage2-batch-size",
+        type=int,
+        help="Override Stage 2 batch size per device"
+    )
+    parser.add_argument(
+        "--stage2-grad-accum",
+        type=int,
+        help="Override Stage 2 gradient accumulation steps"
+    )
+    parser.add_argument(
+        "--stage2-lr-proj",
+        type=float,
+        help="Override Stage 2 projector learning rate"
+    )
+    parser.add_argument(
+        "--stage2-lr-lora",
+        type=float,
+        help="Override Stage 2 LoRA learning rate"
+    )
     args = parser.parse_args()
 
     if args.inference:
@@ -220,6 +269,11 @@ def main():
             use_wandb=args.wandb,
             skip_stage1=args.skip_stage1,
             hardware=args.hardware,
+            stage2_epochs=args.stage2_epochs,
+            stage2_batch_size=args.stage2_batch_size,
+            stage2_grad_accum=args.stage2_grad_accum,
+            stage2_lr_proj=args.stage2_lr_proj,
+            stage2_lr_lora=args.stage2_lr_lora,
         )
 
 
