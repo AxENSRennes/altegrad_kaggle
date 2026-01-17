@@ -77,9 +77,9 @@ def train_stage1(
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
-    # Mixed precision
-    use_amp = config.use_amp and device == "cuda"
-    scaler = torch.amp.GradScaler(device, enabled=use_amp)
+    # Mixed precision - CUDA only (TPU uses native bfloat16 via model dtype)
+    use_amp = config.use_amp and str(device) == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
     # Training state
     best_val_loss = float("inf")
@@ -102,7 +102,7 @@ def train_stage1(
 
             optimizer.zero_grad()
 
-            with torch.amp.autocast(device, enabled=use_amp):
+            with torch.amp.autocast("cuda", enabled=use_amp):
                 # Get graph embeddings
                 graph_emb = model.encode_graphs(graphs)  # [B, 768]
 
@@ -118,11 +118,16 @@ def train_stage1(
                 loss = alignment_criterion(projected, target_emb)
 
             # Backward pass
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.projector.parameters(), config.grad_clip_norm)
-            scaler.step(optimizer)
-            scaler.update()
+            if use_amp:
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.projector.parameters(), config.grad_clip_norm)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.projector.parameters(), config.grad_clip_norm)
+                optimizer.step()
             scheduler.step()
 
             # Update metrics - use detach() to avoid sync barrier
@@ -223,7 +228,7 @@ def evaluate_alignment(
         Tuple of (average_loss, average_cosine_similarity)
     """
     model.projector.eval()
-    use_amp = config.use_amp and device == "cuda"
+    use_amp = config.use_amp and str(device) == "cuda"
 
     # Accumulate as tensors to avoid sync barriers
     total_loss = 0.0
@@ -237,7 +242,7 @@ def evaluate_alignment(
         if not any(descriptions):
             continue
 
-        with torch.amp.autocast(device, enabled=use_amp):
+        with torch.amp.autocast("cuda", enabled=use_amp):
             # Get embeddings
             graph_emb = model.encode_graphs(graphs)
             projected = model.project_to_llm_space(graph_emb)
