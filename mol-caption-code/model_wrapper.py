@@ -98,7 +98,7 @@ class MolCaptionModel(nn.Module):
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_compute_dtype=torch.bfloat16,
                 bnb_4bit_use_double_quant=True,
             )
             self.llm = AutoModelForCausalLM.from_pretrained(
@@ -147,7 +147,7 @@ class MolCaptionModel(nn.Module):
             self.txt_mean = torch.tensor(TXT_MEAN_V1, device=device)
             # Ensure correct dtype (float16 if using quantization/amp)
             if use_quantization:
-                self.txt_mean = self.txt_mean.half()
+                self.txt_mean = self.txt_mean.to(torch.bfloat16)
 
     def process_gnn_embeddings(self, g: torch.Tensor) -> torch.Tensor:
         """
