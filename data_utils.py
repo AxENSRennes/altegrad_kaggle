@@ -121,7 +121,21 @@ class PreprocessedGraphDataset(Dataset):
         graph = self.graphs[idx]
         if self.emb_dict is not None:
             id_ = graph.id
-            text_emb = self.emb_dict[id_]
+            # Robust lookup across int/str key variants
+            candidates = [id_]
+            try:
+                candidates.append(int(id_))
+            except (ValueError, TypeError):
+                pass
+            candidates.append(str(id_))
+
+            text_emb = None
+            for key in candidates:
+                if key in self.emb_dict:
+                    text_emb = self.emb_dict[key]
+                    break
+            if text_emb is None:
+                raise KeyError(f"Text embedding not found for graph id={id_!r}")
             return graph, text_emb
         else:
             return graph

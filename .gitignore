@@ -4,3 +4,5 @@ __pycache__/
 .DS_Store
 ckpt_graph2text/
 data/
+plots/
+ckpt_gine_contrastive/
